@@ -108,6 +108,7 @@ class BilingualBrain(sb.Brain):
 
 def make_manifests(hparams):
     """Create the manifests from the data folder"""
+
     for lang in hparams["train_languages"]:
         data_root = pathlib.Path(hparams["data_folder"]) / lang
         wavs = list(data_root.glob("*.mp3"))
@@ -120,8 +121,9 @@ def make_manifests(hparams):
         }
         for stage in ["train", "valid", "test"]:
             manifest_path = pathlib.Path(hparams[f"{stage}_{lang}_manifest"])
-            #if not manifest_path.exists():
-            make_json(manifest_path, subsets[stage], wavs, lang)
+            if not manifest_path.exists():
+                manifest_path.parent.mkdir(exist_ok=True, parents=True)
+                make_json(manifest_path, subsets[stage], wavs, lang)
 
 def make_json(filename, ids, wavs, lang):
     """Create one manifest in json form"""
@@ -138,7 +140,7 @@ def make_json(filename, ids, wavs, lang):
             "wrd_grid": convert_to_tuples(grid.getList("words")[0]),
             "phn_grid": convert_to_tuples(grid.getList("phones")[0]),
         }
-
+    
     with open(filename, "w") as f:
         json.dump(manifest, f, indent=2)
 
