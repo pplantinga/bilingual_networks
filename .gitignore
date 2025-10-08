@@ -1,0 +1,4 @@
+data/fr/*
+__pycache__
+manifests
+results
