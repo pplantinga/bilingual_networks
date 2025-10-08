@@ -11,3 +11,4 @@ textgrid==1.6.1
 soundfile==0.13.1
 joblib==1.5.0
 tqdm==4.67.1
+speechbrain==1.0.3
