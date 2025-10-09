@@ -138,7 +138,8 @@ def make_json(filename, subset, lang):
                 joblib.delayed(make_item)(wav, lang)
                 for wav in subset
             ),
-            disable=None
+            disable=None,
+            total=len(subset),
         )
     }
     with open(filename, "w", encoding="utf8") as f:
