@@ -2,6 +2,7 @@ import sys
 import json
 import tqdm
 import torch
+import joblib
 import logging
 import pathlib
 import textgrid
@@ -113,13 +114,12 @@ def make_manifests(hparams):
 
     for lang in hparams["train_languages"]:
         data_root = pathlib.Path(hparams["data_folder"]) / lang
-        wavs = {wav.stem: wav for wav in data_root.glob("*.mp3")}
-        ks = list(wavs.keys())
-        test_size = valid_size = int(len(ks) * hparams["test_portion"])
+        wavs = list(data_root.glob("*.mp3"))
+        test_size = valid_size = int(len(wavs) * hparams["test_portion"])
         subsets = {
-            "test": {k: wavs[k] for k in ks[:test_size]},
-            "valid": {k: wavs[k] for k in ks[test_size:test_size + valid_size]},
-            "train": {k: wavs[k] for k in ks[test_size + valid_size:]},
+            "test": wavs[:test_size],
+            "valid": wavs[test_size:test_size + valid_size],
+            "train": wavs[test_size + valid_size:],
         }
         for stage in ["train", "valid", "test"]:
             manifest_path = pathlib.Path(hparams[f"{stage}_{lang}_manifest"])
@@ -130,19 +130,27 @@ def make_manifests(hparams):
 
 def make_json(filename, subset, lang):
     """Create one manifest in json form"""
-    manifest = {}
-    for k, wav in tqdm.tqdm(subset.items(), disable=None):
-        grid = textgrid.TextGrid.fromFile(wav.with_suffix(".TextGrid"))
-        manifest[wav.stem] = {
-            "wav": str(wav),
-            "lang": lang,
-            "frame_count": torchaudio.info(wav).num_frames,
-            "wrd_grid": convert_to_tuples(grid.getList("words")[0]),
-            "phn_grid": convert_to_tuples(grid.getList("phones")[0]),
-        }
-    
+    manifest = {
+        key: item
+        for key, item in joblib.Parallel(n_jobs=8)(
+            joblib.delayed(make_item)(wav, lang)
+            for wav in subset
+        )
+    }
     with open(filename, "w") as f:
         json.dump(manifest, f, indent=2)
+
+def make_item(wav, lang):
+    grid = textgrid.TextGrid.fromFile(wav.with_suffix(".TextGrid"))
+    item = {
+        "wav": str(wav),
+        "lang": lang,
+        "frame_count": torchaudio.info(wav).num_frames,
+        "wrd_grid": convert_to_tuples(grid.getList("words")[0]),
+        "phn_grid": convert_to_tuples(grid.getList("phones")[0]),
+    }
+
+    return (wav.stem, item)
 
 def convert_to_tuples(grid):
     """Convert grid to tuple of 'wrd', 'start', 'end'. """
