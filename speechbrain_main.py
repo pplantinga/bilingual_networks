@@ -1,12 +1,16 @@
 import sys
 import json
+import tqdm
 import torch
+import logging
 import pathlib
 import textgrid
 import torchaudio
 import pandas as pd
 import speechbrain as sb
 from hyperpyyaml import load_hyperpyyaml
+
+logger = sb.utils.logger.get_logger("speechbrain_main.py")
 
 
 class BilingualBrain(sb.Brain):
@@ -79,8 +83,6 @@ class BilingualBrain(sb.Brain):
         }
 
         if stage == sb.Stage.VALID:
-            print(phn_acc)
-
             self.scheduler.step(phn_acc)
 
             self.hparams.train_logger.log_stats(
@@ -111,27 +113,25 @@ def make_manifests(hparams):
 
     for lang in hparams["train_languages"]:
         data_root = pathlib.Path(hparams["data_folder"]) / lang
-        wavs = list(data_root.glob("*.mp3"))
-        ids = [wav.stem for wav in wavs]
-        test_size = valid_size = int(len(ids) * hparams["test_portion"])
+        wavs = {wav.stem: wav for wav in data_root.glob("*.mp3")}
+        ks = list(wavs.keys())
+        test_size = valid_size = int(len(ks) * hparams["test_portion"])
         subsets = {
-            "test": set(ids[:test_size]),
-            "valid": set(ids[test_size:test_size + valid_size]),
-            "train": set(ids[test_size + valid_size:]),
+            "test": {k: wavs[k] for k in ks[:test_size]},
+            "valid": {k: wavs[k] for k in ks[test_size:test_size + valid_size]},
+            "train": {k: wavs[k] for k in ks[test_size + valid_size:]},
         }
         for stage in ["train", "valid", "test"]:
             manifest_path = pathlib.Path(hparams[f"{stage}_{lang}_manifest"])
             if not manifest_path.exists():
                 manifest_path.parent.mkdir(exist_ok=True, parents=True)
-                make_json(manifest_path, subsets[stage], wavs, lang)
+                logger.info(f"Creating {stage} manifest:")
+                make_json(manifest_path, subsets[stage], lang)
 
-def make_json(filename, ids, wavs, lang):
+def make_json(filename, subset, lang):
     """Create one manifest in json form"""
     manifest = {}
-    for wav in wavs:
-        if wav.stem not in ids:
-            continue
-
+    for k, wav in tqdm.tqdm(subset.items(), disable=None):
         grid = textgrid.TextGrid.fromFile(wav.with_suffix(".TextGrid"))
         manifest[wav.stem] = {
             "wav": str(wav),
@@ -185,9 +185,9 @@ def make_datasets(hparams):
         disambiguated_phns = [f"{phn}_{lang}" for phn in phn2hlg]
         hparams["phn_encoder"].update_from_iterable(disambiguated_phns)
 
-    print("# of (language-dependent) words:", len(hparams["wrd_encoder"].ind2lab))
-    print("# of (language-dependent) phonemes:", len(hparams["phn_encoder"].ind2lab))
-    print("# of (language-independent) homologs:", len(hparams["hlg_encoder"].ind2lab))
+    logger.info(f"# of (language-dependent) words: {len(hparams['wrd_encoder'].ind2lab)}")
+    logger.info(f"# of (language-dependent) phonemes: {len(hparams['phn_encoder'].ind2lab)}")
+    logger.info(f"# of (language-independent) homologs: {len(hparams['hlg_encoder'].ind2lab)}")
 
     @sb.utils.data_pipeline.takes("wav")
     @sb.utils.data_pipeline.provides("signal")
