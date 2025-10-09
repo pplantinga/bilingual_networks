@@ -138,11 +138,11 @@ def make_json(filename, subset, lang):
                 joblib.delayed(make_item)(wav, lang)
                 for wav in subset
             ),
-            display=None
+            disable=None
         )
     }
-    with open(filename, "w") as f:
-        json.dump(manifest, f, indent=2)
+    with open(filename, "w", encoding="utf8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
 
 def make_item(wav, lang):
     """Create a single item of the manifest, to be run in parallel"""
