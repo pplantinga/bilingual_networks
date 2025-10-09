@@ -56,6 +56,7 @@ class BilingualBrain(sb.Brain):
         return wrd_loss + phn_loss + hlg_loss
 
     def compute_loss(self, predictions, targets):
+        """Compute cross-entropy loss, ignoring the "silence" and padding index: 0"""
         # Move time dimension to end for predictions
         predictions = predictions.transpose(1, 2)
         # Ignore silences and padding
@@ -132,15 +133,19 @@ def make_json(filename, subset, lang):
     """Create one manifest in json form"""
     manifest = {
         key: item
-        for key, item in joblib.Parallel(n_jobs=8)(
-            joblib.delayed(make_item)(wav, lang)
-            for wav in subset
+        for key, item in tqdm.tqdm(
+            joblib.Parallel(n_jobs=8, return_as='generator_unordered')(
+                joblib.delayed(make_item)(wav, lang)
+                for wav in subset
+            ),
+            display=None
         )
     }
     with open(filename, "w") as f:
         json.dump(manifest, f, indent=2)
 
 def make_item(wav, lang):
+    """Create a single item of the manifest, to be run in parallel"""
     grid = textgrid.TextGrid.fromFile(wav.with_suffix(".TextGrid"))
     item = {
         "wav": str(wav),
@@ -161,6 +166,7 @@ def read_label_file(filename, col):
     return pd.read_csv(filename)[col]
 
 def csv2map(filename, key_col, val_col):
+    """Create a mapping from one column of a csv to another"""
     df = pd.read_csv(filename).dropna(subset=[key_col, val_col])
     return {k: v for k, v in zip(df[key_col], df[val_col])}
 
@@ -200,11 +206,13 @@ def make_datasets(hparams):
     @sb.utils.data_pipeline.takes("wav")
     @sb.utils.data_pipeline.provides("signal")
     def audio_pipeline(wav):
+        """Simply read the audio"""
         return sb.dataio.dataio.read_audio(wav)
 
     @sb.utils.data_pipeline.takes("lang", "wrd_grid", "phn_grid", "frame_count")
     @sb.utils.data_pipeline.provides("lang_enc", "wrd_targets", "phn_targets", "hlg_targets")
     def label_pipeline(lang, wrd_timings, phn_timings, frame_count):
+        """Encode the textual inputs/targets"""
 
         yield hparams["lang_encoder"].encode_label(lang)
 
