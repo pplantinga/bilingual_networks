@@ -62,7 +62,7 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 lr: 0.001
 patience: 5
 lr_factor: .1
-batch_size: 4
+batch_size: 32
 num_epochs: 30
 length_mean: 2.25
 length_var: 1
@@ -94,8 +94,8 @@ lr_annealing: !name:torch.optim.lr_scheduler.ReduceLROnPlateau
 model: !new:models.ASRSpecNet
   config: !new:types.SimpleNamespace
     fs: !ref <fs>
-    num_phonemes: 82
-    num_homologes: 54
+    num_phonemes: 84
+    num_homologes: 56
     n_mel: !ref <n_mels>
     n_mfcc_out: 128
     cnn_out_size: 128
