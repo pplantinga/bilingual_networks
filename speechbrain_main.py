@@ -248,7 +248,7 @@ def make_datasets(hparams):
             json_path=hparams[f"{stage}_fr_manifest"],
             dynamic_items=[audio_pipeline, label_pipeline],
             output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets", "hlg_targets"],
-        ).filtered_sorted(sort_key="frame_count")
+        ).filtered_sorted(sort_key="frame_count", key_max_value={"frame_count": 16000 * 18})
     
     return datasets
 
