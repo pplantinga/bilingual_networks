@@ -20,9 +20,7 @@ class BilingualBrain(sb.Brain):
         batch.to(self.device)
         signal, lens = batch.signal
         feats = self.hparams.compute_features(signal)
-        # Permute shape to expected shape
-        data = (feats.transpose(1, 2), batch.lang_enc)
-        phn_out, wrd_out, hlg_out, _, _, _ = self.modules.model(data, lens)
+        wrd_out, phn_out, hlg_out = self.modules.model(feats, batch.lang_enc)
 
         return wrd_out, phn_out, hlg_out
 
@@ -173,38 +171,57 @@ def csv2map(filename, key_col, val_col):
     df = pd.read_csv(filename).dropna(subset=[key_col, val_col])
     return {k: v for k, v in zip(df[key_col], df[val_col])}
 
-def make_datasets(hparams):
-    """Create data pipelines for all stages, and label encoders."""
+
+def make_encoders(hparams):
+    # Language is set to "unknown" with some chance
     hparams["lang_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+    hparams["lang_encoder"].expect_len(len(hparams["supported_languages"]) + 1)
+    hparams["lang_encoder"].add_unk()
     hparams["lang_encoder"].update_from_iterable(hparams["supported_languages"])
+
+    # Put unknown words at index 0 and ignore them
     hparams["wrd_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["wrd_encoder"].add_label("<sil>")
+    hparams["wrd_encoder"].expect_len(hparams["word_outputs"])
     hparams["wrd_encoder"].add_unk()
 
-    # Add wrd from both languages so we don't have to modify architecture
+    # Add words from both languages so we don't have to modify architecture
     # Some words may be spelled the same but we disambiguate with a language tag
     for lang, wrd_file in hparams["wrd_files"].items():
         wrd_list = read_label_file(wrd_file, "word")
         hparams["wrd_encoder"].update_from_iterable(wrd_list + "_" + lang)
 
-    # Add lang to phonemes to disambiguate between languages
+    # Index 0 is silence in all cases and can be safely ignored.
+    # Montreal Forced Aligner uses "spn" as a sort of "unknown speech noise"
     hparams["phn_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+    hparams["phn_encoder"].expect_len(hparams["phone_outputs"])
     hparams["phn_encoder"].add_label("sil")
     hparams["phn_encoder"].add_label("spn")
     hparams["hlg_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+    hparams["hlg_encoder"].expect_len(hparams["homolog_outputs"])
     hparams["hlg_encoder"].add_label("sil")
     hparams["hlg_encoder"].add_label("spn")
+
+    # Iterate language phone files to add all symbols to encoders
     for lang, phn_file in hparams["phn_files"].items():
+
+        # Build map and convert phoneme labels to lang-independent homologs
         phn2hlg = csv2map(phn_file, "ipa", "homolog")
         phn2hlg["spn"] = "spn"
         hparams[f"phn2hlg_{lang}"] = phn2hlg
         hparams["hlg_encoder"].update_from_iterable(phn2hlg.values())
+
+        # Similarly to words, add language tag to disambiguate between languages
         disambiguated_phns = [f"{phn}_{lang}" for phn in phn2hlg]
         hparams["phn_encoder"].update_from_iterable(disambiguated_phns)
 
+    # The phone/word counts are crucial for setting up the architecture correctly
     logger.info(f"# of (language-dependent) words: {len(hparams['wrd_encoder'].ind2lab)}")
     logger.info(f"# of (language-dependent) phonemes: {len(hparams['phn_encoder'].ind2lab)}")
     logger.info(f"# of (language-independent) homologs: {len(hparams['hlg_encoder'].ind2lab)}")
+
+
+def make_datasets(hparams):
+    """Create data pipelines for all stages, and label encoders."""
 
     @sb.utils.data_pipeline.takes("wav")
     @sb.utils.data_pipeline.provides("signal")
@@ -252,6 +269,10 @@ def make_datasets(hparams):
     
     return datasets
 
+
+#######################################
+# MAIN
+#######################################
 if __name__ == "__main__":
     # CLI:
     hparams_file, run_opts, overrides = sb.parse_arguments(sys.argv[1:])
@@ -267,10 +288,12 @@ if __name__ == "__main__":
         overrides=overrides,
     )
 
-    # Manifests will only be made once, datasets every time
+    # Manifests will only be made once, encoders and datasets every time
     make_manifests(hparams)
+    make_encoders(hparams)
     datasets = make_datasets(hparams)
 
+    # Create trainer
     bilingual_brain = BilingualBrain(
         modules={"model": hparams["model"]},
         opt_class=hparams["opt_class"],
