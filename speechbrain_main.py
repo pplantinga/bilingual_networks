@@ -1,3 +1,14 @@
+"""
+Speechbrain recipe for training a multilingual phoneme/homolog/word recognitionmodel
+for investigating the effects of language attrition from lack of exposure.
+
+To run:
+
+> python speechbrain_main.py experiments/commonvoice_fr_phonemes_words.yaml --data_folder data
+
+Author:
+ * Peter Plantinga
+"""
 import sys
 import json
 import tqdm
@@ -20,6 +31,9 @@ class BilingualBrain(sb.Brain):
         batch.to(self.device)
         signal, lens = batch.signal
         feats = self.hparams.compute_features(signal)
+        if torch.isnan(feats).any() or torch.isinf(feats).any():
+            logger.warn("Nonfinite Features!!!")
+            torch.nan_to_num(feats)
         wrd_out, phn_out, hlg_out = self.modules.model(feats, batch.lang_enc)
 
         return wrd_out, phn_out, hlg_out

@@ -159,8 +159,9 @@ class WordPhoneModel(torch.nn.Module):
         cnn_out = self.CNN(mel_spectrogram)
 
         # Produces [batch, 1, lang_embed_size], some chance "unknown"
-        language *= torch.rand_like(language.float()) < self.chance_lang_unknown
-        lang_embedding = self.lang_embedding(language).unsqueeze(1)
+        mask = (torch.rand_like(language.float()) < self.chance_lang_unknown)
+        language_masked = language * mask.long()
+        lang_embedding = self.lang_embedding(language_masked).unsqueeze(1)
 
         # Pass to RNN the CNN+lang_embedding concatenated on channel axis
         lang_embedding = lang_embedding.repeat(1, cnn_out.size(1), 1)

@@ -59,12 +59,12 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 
 #################
 # Training hyperparameters
-lr: 0.001
+lr: 0.0001
 patience: 5
 lr_factor: .1
 batch_size: 64
 num_epochs: 30
-max_grad_norm: 1.0
+max_grad_norm: 5.0
 skip_nonfinite_grads: True
 precision: bf16
 
