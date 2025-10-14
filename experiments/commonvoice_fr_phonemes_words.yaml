@@ -65,6 +65,7 @@ lr_factor: .1
 batch_size: 64
 num_epochs: 30
 max_grad_norm: 5.0
+random_crop_len: 2.5  # seconds
 skip_nonfinite_grads: True
 precision: bf16
 

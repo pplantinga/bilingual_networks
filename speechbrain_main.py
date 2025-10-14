@@ -237,38 +237,47 @@ def make_encoders(hparams):
 def make_datasets(hparams):
     """Create data pipelines for all stages, and label encoders."""
 
-    @sb.utils.data_pipeline.takes("wav")
-    @sb.utils.data_pipeline.provides("signal")
-    def audio_pipeline(wav):
-        """Simply read the audio"""
-        return sb.dataio.dataio.read_audio(wav)
+    @sb.utils.data_pipeline.takes("lang", "wav", "wrd_grid", "phn_grid", "frame_count")
+    @sb.utils.data_pipeline.provides("lang_enc", "signal", "wrd_targets", "phn_targets", "hlg_targets")
+    def data_pipeline(lang, wav, wrd_timings, phn_timings, frame_count):
+        """Encode the inputs/targets"""
 
-    @sb.utils.data_pipeline.takes("lang", "wrd_grid", "phn_grid", "frame_count")
-    @sb.utils.data_pipeline.provides("lang_enc", "wrd_targets", "phn_targets", "hlg_targets")
-    def label_pipeline(lang, wrd_timings, phn_timings, frame_count):
-        """Encode the textual inputs/targets"""
-
+        # No extra computation needed
         yield hparams["lang_encoder"].encode_label(lang)
 
-        target_size = frame_count // hparams["downsample_factor"] + 1
+        # Select random crop of the audio
+        audio = sb.dataio.dataio.read_audio(wav)
+        target_size = frame_count // hparams["downsample_factor"]
         target_rate = hparams["fs"] // hparams["downsample_factor"]
-        wrd_label_sequence = torch.zeros(target_size, dtype=torch.long)
-        phn_label_sequence = torch.zeros(target_size, dtype=torch.long)
-        hlg_label_sequence = torch.zeros(target_size, dtype=torch.long)
+        random_crop_len = int(hparams["random_crop_len"] * target_rate) + 1
+        crop_start = torch.randint(max(target_size - random_crop_len, 1), size=(1,)).item()
+
+        signal_end = (crop_start + random_crop_len - 1) * hparams["downsample_factor"]
+        signal = audio[crop_start * hparams["downsample_factor"]:signal_end]
+        yield signal
+
+        # Create time-aligned target vectors based on alignment info in manifest
+        wrd_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
+        phn_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
+        hlg_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
 
         # Iterate words to create frame-level targets at the specified rate
         for wrd, start, stop in wrd_timings:
-            start, stop = int(start * target_rate), int(stop * target_rate)
-            wrd_label_sequence[start:stop] = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang)
+            start = max(int(start * target_rate) - crop_start, 0)
+            stop = min(int(stop * target_rate) - crop_start, random_crop_len)
+            if stop > 0 or start < random_crop_len:
+                wrd_label_sequence[start:stop] = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang)
 
         yield wrd_label_sequence
 
         # Iterate phonemees to create frame-level targets at the specified rate
         for phn, start, stop in phn_timings:
-            start, stop = int(start * target_rate), int(stop * target_rate)
-            phn_label_sequence[start:stop] = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang)
-            hlg = hparams[f"phn2hlg_{lang}"][phn]
-            hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
+            start = max(int(start * target_rate) - crop_start, 0)
+            stop = min(int(stop * target_rate) - crop_start, random_crop_len)
+            if stop > 0 or start < random_crop_len:
+                phn_label_sequence[start:stop] = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang)
+                hlg = hparams[f"phn2hlg_{lang}"][phn]
+                hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
 
         yield phn_label_sequence
         yield hlg_label_sequence
@@ -277,9 +286,9 @@ def make_datasets(hparams):
     for stage in ["train", "valid", "test"]:
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset.from_json(
             json_path=hparams[f"{stage}_fr_manifest"],
-            dynamic_items=[audio_pipeline, label_pipeline],
+            dynamic_items=[data_pipeline],
             output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets", "hlg_targets"],
-        ).filtered_sorted(sort_key="frame_count", key_max_value={"frame_count": 16000 * 18})
+        )#.filtered_sorted(sort_key="frame_count")
     
     return datasets
 
