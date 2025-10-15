@@ -165,11 +165,12 @@ class ASRDataset(AudioDataset):
             for phoneme in tg.getList("phones")[0]:
                 duration = phoneme.maxTime - phoneme.minTime
                 phoneme = phoneme.mark.rstrip("0123456789")
-                if phoneme in ['sil', 'sp', 'spn']:
-                    index_offset = sum([len(ph) for ph in self.Sy_phoneme[:self.lang_sil]])
-                    phoneme_index = self.Sy_phoneme[self.lang_sil].index(phoneme) + index_offset
-                    homologe_index = self.Sy_homologe[self.lang_sil][phoneme]
-                else:
+                #if phoneme in ['sil', 'sp', 'spn']:
+                #    index_offset = sum([len(ph) for ph in self.Sy_phoneme[:self.lang_sil]])
+                #    phoneme_index = self.Sy_phoneme[self.lang_sil].index(phoneme) + index_offset
+                #    homologe_index = self.Sy_homologe[self.lang_sil][phoneme]
+                #else:
+                if True:
                     if phoneme in self.Sy_phoneme[y_lang]:
                         index_offset = sum([len(ph) for ph in self.Sy_phoneme[:y_lang]])
                         phoneme_index = self.Sy_phoneme[y_lang].index(phoneme) + index_offset
@@ -347,7 +348,7 @@ def load_manifest(manifest_path, datapath):
             filename = line.strip('\n')
             languages.append(filename.split('/')[0])
             filepath = os.path.join(datapath, filename)
-            wavfiles.append(filepath+'.wav')
+            wavfiles.append(filepath+'.mp3')
             tgfiles.append(filepath+'.TextGrid')
     return np.array(wavfiles), np.array(tgfiles), np.array(languages)
 
