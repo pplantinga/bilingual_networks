@@ -358,7 +358,8 @@ def get_datasets(config, datapath, manifest_train, manifest_dev, manifest_test, 
     Sy_phoneme, Sy_word, Sy_homologe = ([], [], [])
     for i_lang, language in enumerate(lang_order):
         df = pd.read_csv(f'data/phonemes_{language}.csv',index_col=0,na_filter=False)
-        Sy_phoneme.append(df.index.values.tolist())
+        #Sy_phoneme.append(df.index.values.tolist())
+        Sy_phoneme.append(df.ipa.values.tolist())
         Sy_homologe.append(df['homolog'].values.tolist())
         df = pd.read_csv(f'data/words_{language}.csv',index_col=0,na_filter=False)
         Sy_word.append(df['word'].values.tolist())
