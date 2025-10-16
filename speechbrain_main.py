@@ -110,7 +110,7 @@ def make_manifests(hparams):
 
     for lang in hparams["train_languages"]:
         data_root = pathlib.Path(hparams["data_folder"]) / lang
-        wavs = list(data_root.glob("*.mp3"))
+        wavs = list(data_root.glob("*.wav"))
         test_size = valid_size = int(len(wavs) * hparams["test_portion"])
         subsets = {
             "test": wavs[:test_size],
@@ -226,7 +226,7 @@ def make_datasets(hparams):
         """Encode the inputs/targets"""
 
         # No extra computation needed
-        yield hparams["lang_encoder"].encode_label(lang)
+        lang_enc = hparams["lang_encoder"].encode_label(lang)
 
         # Select random crop of the audio
         audio = sb.dataio.dataio.read_audio(wav)
@@ -237,7 +237,6 @@ def make_datasets(hparams):
 
         signal_end = (crop_start + random_crop_len - 1) * hparams["downsample_factor"]
         signal = audio[crop_start * hparams["downsample_factor"]:signal_end]
-        yield signal
 
         # Create time-aligned target vectors based on alignment info in manifest
         wrd_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
@@ -248,21 +247,19 @@ def make_datasets(hparams):
         for wrd, start, stop in wrd_timings:
             start = max(int(start * target_rate) - crop_start, 0)
             stop = min(int(stop * target_rate) - crop_start, random_crop_len)
-            if stop > 0 or start < random_crop_len:
+            if stop > 0 and start < random_crop_len:
                 wrd_label_sequence[start:stop] = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang)
-
-        yield wrd_label_sequence
 
         # Iterate phonemees to create frame-level targets at the specified rate
         for phn, start, stop in phn_timings:
             start = max(int(start * target_rate) - crop_start, 0)
             stop = min(int(stop * target_rate) - crop_start, random_crop_len)
-            if stop > 0 or start < random_crop_len:
+            if stop > 0 and start < random_crop_len:
                 phn_label_sequence[start:stop] = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang)
                 #hlg = hparams[f"phn2hlg_{lang}"][phn]
                 #hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
 
-        yield phn_label_sequence
+        return lang_enc, signal, wrd_label_sequence, phn_label_sequence
         #yield hlg_label_sequence
 
     datasets = {}
