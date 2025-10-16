@@ -47,13 +47,9 @@ class BilingualBrain(sb.Brain):
         #hlg_loss = self.compute_loss(predictions=hlg_out, targets=hlg_targets)
 
         if stage != sb.Stage.TRAIN:
-            # Where targets are nonzero, compute accuracy
-            wrd_non0 = wrd_targets > 0
-            phn_non0 = phn_targets > 0
-            wrd_pred = torch.argmax(wrd_out, dim=-1)[wrd_non0]
-            phn_pred = torch.argmax(phn_out, dim=-1)[phn_non0]
-            self.hparams.word_metric(wrd_pred, wrd_targets[wrd_non0])
-            self.hparams.phone_metric(phn_pred, phn_targets[wrd_non0])
+            # Where targets are nonzero, compute accuracy, expects [batch, class, time]
+            self.hparams.word_metric(wrd_out.transpose(1, 2), wrd_targets)
+            self.hparams.phone_metric(phn_out.transpose(1, 2), phn_targets)
 
         #return wrd_loss + phn_loss + hlg_loss
         return 0.1 * wrd_loss + phn_loss
@@ -68,7 +64,7 @@ class BilingualBrain(sb.Brain):
         predictions = predictions.view(-1, classes)
         targets = targets.view(-1)
         # Ignore silences and padding
-        return torch.nn.functional.cross_entropy(predictions, targets, ignore_index=0)
+        return torch.nn.functional.cross_entropy(predictions, targets)#, ignore_index=0)
 
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
@@ -82,7 +78,7 @@ class BilingualBrain(sb.Brain):
             }
 
         if stage == sb.Stage.VALID:
-            self.scheduler.step(phn_acc)
+            self.scheduler.step(stats["phn_acc"])
             self.hparams.word_metric.reset()
             self.hparams.phone_metric.reset()
 
@@ -197,10 +193,10 @@ def make_encoders(hparams):
     hparams["phn_encoder"].expect_len(hparams["phone_outputs"])
     hparams["phn_encoder"].add_label("sil")
     hparams["phn_encoder"].add_label("spn")
-    hparams["hlg_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["hlg_encoder"].expect_len(hparams["homolog_outputs"])
-    hparams["hlg_encoder"].add_label("sil")
-    hparams["hlg_encoder"].add_label("spn")
+    #hparams["hlg_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+    #hparams["hlg_encoder"].expect_len(hparams["homolog_outputs"])
+    #hparams["hlg_encoder"].add_label("sil")
+    #hparams["hlg_encoder"].add_label("spn")
 
     # Iterate language phone files to add all symbols to encoders
     for lang, phn_file in hparams["phn_files"].items():
@@ -209,7 +205,7 @@ def make_encoders(hparams):
         phn2hlg = csv2map(phn_file, "ipa", "homolog")
         phn2hlg["spn"] = "spn"
         hparams[f"phn2hlg_{lang}"] = phn2hlg
-        hparams["hlg_encoder"].update_from_iterable(phn2hlg.values())
+        #hparams["hlg_encoder"].update_from_iterable(phn2hlg.values())
 
         # Similarly to words, add language tag to disambiguate between languages
         disambiguated_phns = [f"{phn}_{lang}" for phn in phn2hlg]
@@ -218,14 +214,14 @@ def make_encoders(hparams):
     # The phone/word counts are crucial for setting up the architecture correctly
     logger.info(f"# of (language-dependent) words: {len(hparams['wrd_encoder'].ind2lab)}")
     logger.info(f"# of (language-dependent) phonemes: {len(hparams['phn_encoder'].ind2lab)}")
-    logger.info(f"# of (language-independent) homologs: {len(hparams['hlg_encoder'].ind2lab)}")
+    #logger.info(f"# of (language-independent) homologs: {len(hparams['hlg_encoder'].ind2lab)}")
 
 
 def make_datasets(hparams):
     """Create data pipelines for all stages, and label encoders."""
 
     @sb.utils.data_pipeline.takes("lang", "wav", "wrd_grid", "phn_grid", "frame_count")
-    @sb.utils.data_pipeline.provides("lang_enc", "signal", "wrd_targets", "phn_targets", "hlg_targets")
+    @sb.utils.data_pipeline.provides("lang_enc", "signal", "wrd_targets", "phn_targets")#, "hlg_targets")
     def data_pipeline(lang, wav, wrd_timings, phn_timings, frame_count):
         """Encode the inputs/targets"""
 
@@ -246,7 +242,7 @@ def make_datasets(hparams):
         # Create time-aligned target vectors based on alignment info in manifest
         wrd_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
         phn_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
-        hlg_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
+        #hlg_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
 
         # Iterate words to create frame-level targets at the specified rate
         for wrd, start, stop in wrd_timings:
@@ -263,18 +259,18 @@ def make_datasets(hparams):
             stop = min(int(stop * target_rate) - crop_start, random_crop_len)
             if stop > 0 or start < random_crop_len:
                 phn_label_sequence[start:stop] = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang)
-                hlg = hparams[f"phn2hlg_{lang}"][phn]
-                hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
+                #hlg = hparams[f"phn2hlg_{lang}"][phn]
+                #hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
 
         yield phn_label_sequence
-        yield hlg_label_sequence
+        #yield hlg_label_sequence
 
     datasets = {}
     for stage in ["train", "valid", "test"]:
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset.from_json(
             json_path=hparams[f"{stage}_fr_manifest"],
             dynamic_items=[data_pipeline],
-            output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets", "hlg_targets"],
+            output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets"]#, "hlg_targets"],
         )#.filtered_sorted(sort_key="frame_count")
     
     return datasets
@@ -305,7 +301,7 @@ if __name__ == "__main__":
 
     # Create trainer
     bilingual_brain = BilingualBrain(
-        modules={"model": hparams["model"]},
+        modules={k: hparams[k] for k in ["model", "word_metric", "phone_metric"]},
         opt_class=hparams["opt_class"],
         hparams=hparams,
         run_opts=run_opts,
