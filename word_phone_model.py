@@ -15,9 +15,11 @@ class WordPhoneModel(torch.nn.Module):
     both word and phoneme probabilities. 
 
     This model expects 3-dimensional input [batch, time, feats] and
-    by default produces three output with sizes:
+    produces two outputs with sizes:
      * [batch, time, word_outputs]
      * [batch, time, phone_outputs]
+
+    Plus an optional third output with size:
      * [batch, time, homolog_outputs]
 
     Arguments
@@ -197,8 +199,6 @@ class CNN_Block(sb.nnet.containers.Sequential):
         Size of the 1d convolutional kernel
     activation : torch.nn.Module class
         A class to be used for instantiating an activation layer.
-    dropout : float
-        Rate to use for dropping channels.
 
     Example
     -------
@@ -223,5 +223,5 @@ class CNN_Block(sb.nnet.containers.Sequential):
             kernel_size=kernel_size,
             layer_name="conv",
         )
-        self.append(sb.nnet.normalization.LayerNorm, layer_name="norm")
+        self.append(sb.nnet.normalization.BatchNorm1d, layer_name="norm")
         self.append(activation(), layer_name="activation")

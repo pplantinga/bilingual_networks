@@ -31,73 +31,60 @@ class BilingualBrain(sb.Brain):
         batch.to(self.device)
         signal, lens = batch.signal
         feats = self.hparams.compute_features(signal)
-        if torch.isnan(feats).any() or torch.isinf(feats).any():
-            logger.warn("Nonfinite Features!!!")
-            torch.nan_to_num(feats)
-        wrd_out, phn_out, hlg_out = self.modules.model(feats, batch.lang_enc)
+        wrd_out, phn_out = self.modules.model(feats, batch.lang_enc)
 
-        return wrd_out, phn_out, hlg_out
+        return wrd_out, phn_out
 
     def compute_objectives(self, predictions, batch, stage):
         """Computes the loss between predicted and actual wrd and phonemes."""
-        wrd_out, phn_out, hlg_out = predictions
+        wrd_out, phn_out = predictions
         # Ignore lengths, they should match the predictions by design
         wrd_targets, _ = batch.wrd_targets
         phn_targets, _ = batch.phn_targets
-        hlg_targets, _ = batch.hlg_targets
         wrd_loss = self.compute_loss(predictions=wrd_out, targets=wrd_targets)
         phn_loss = self.compute_loss(predictions=phn_out, targets=phn_targets)
-        hlg_loss = self.compute_loss(predictions=hlg_out, targets=hlg_targets)
+        #hlg_targets, _ = batch.hlg_targets
+        #hlg_loss = self.compute_loss(predictions=hlg_out, targets=hlg_targets)
 
         if stage != sb.Stage.TRAIN:
-            wrd_pred = torch.argmax(wrd_out, dim=-1)
-            phn_pred = torch.argmax(phn_out, dim=-1)
-            hlg_pred = torch.argmax(hlg_out, dim=-1)
+            # Where targets are nonzero, compute accuracy
+            wrd_non0 = wrd_targets > 0
+            phn_non0 = phn_targets > 0
+            wrd_pred = torch.argmax(wrd_out, dim=-1)[wrd_non0]
+            phn_pred = torch.argmax(phn_out, dim=-1)[phn_non0]
+            self.hparams.word_metric(wrd_pred, wrd_targets[wrd_non0])
+            self.hparams.phone_metric(phn_pred, phn_targets[wrd_non0])
 
-            self.wrd_count += wrd_targets.count_nonzero()
-            self.phn_count += phn_targets.count_nonzero()
-            self.hlg_count += hlg_targets.count_nonzero()
-
-            wrd_correct = torch.logical_and(wrd_targets == wrd_pred, wrd_targets)
-            phn_correct = torch.logical_and(phn_targets == phn_pred, phn_targets)
-            hlg_correct = torch.logical_and(hlg_targets == hlg_pred, hlg_targets)
-            self.wrd_correct += wrd_correct.sum()
-            self.phn_correct += phn_correct.sum()
-            self.hlg_correct += hlg_correct.sum()
-
-        return wrd_loss + phn_loss + hlg_loss
+        #return wrd_loss + phn_loss + hlg_loss
+        return 0.1 * wrd_loss + phn_loss
 
     def compute_loss(self, predictions, targets):
         """Compute cross-entropy loss, ignoring the "silence" and padding index: 0"""
         # Move time dimension to end for predictions
-        predictions = predictions.transpose(1, 2)
+        #predictions = predictions.transpose(1, 2)
+
+        # Collapse batch & time dimensions
+        classes = predictions.size(-1)
+        predictions = predictions.view(-1, classes)
+        targets = targets.view(-1)
         # Ignore silences and padding
         return torch.nn.functional.cross_entropy(predictions, targets, ignore_index=0)
 
-    def on_stage_start(self, stage, epoch=None):
-        """Set up metric computation"""
-        self.wrd_count = torch.ones(1, device=self.device)
-        self.phn_count = torch.ones(1, device=self.device)
-        self.hlg_count = torch.ones(1, device=self.device)
-
-        self.wrd_correct = torch.ones(1, device=self.device)
-        self.phn_correct = torch.ones(1, device=self.device)
-        self.hlg_correct = torch.ones(1, device=self.device)
-
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
-        wrd_acc = self.wrd_correct / self.wrd_count
-        phn_acc = self.phn_correct / self.phn_count
-        hlg_acc = self.hlg_correct / self.hlg_count
-        stats={
-            "loss": stage_loss,
-            "wrd_acc": wrd_acc,
-            "phn_acc": phn_acc,
-            "hlg_acc": hlg_acc,
-        }
+
+        if stage != sb.Stage.TRAIN:
+            stats={
+                "loss": stage_loss,
+                "wrd_acc": self.hparams.word_metric.compute(),
+                "phn_acc": self.hparams.phone_metric.compute(),
+                #"hlg_acc": self.hparams.homolog_metric.compute(),
+            }
 
         if stage == sb.Stage.VALID:
             self.scheduler.step(phn_acc)
+            self.hparams.word_metric.reset()
+            self.hparams.phone_metric.reset()
 
             self.hparams.train_logger.log_stats(
                 stats_meta={"epoch": epoch},

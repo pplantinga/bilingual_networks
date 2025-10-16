@@ -59,7 +59,7 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 
 #################
 # Training hyperparameters
-lr: 0.0001
+lr: 0.001
 patience: 5
 lr_factor: .1
 batch_size: 64
@@ -88,15 +88,27 @@ lr_annealing: !name:torch.optim.lr_scheduler.ReduceLROnPlateau
 # Model hyperparameters
 word_outputs: 8000
 phone_outputs: 86
-homolog_outputs: 57
+#homolog_outputs: 57
 model: !new:word_phone_model.WordPhoneModel
   input_size: !ref <n_mels>
   languages: 2
   word_outputs: !ref <word_outputs>
   phone_outputs: !ref <phone_outputs>
-  homolog_outputs: !ref <homolog_outputs>
+  #homolog_outputs: !ref <homolog_outputs>
   cnn_channels: 128
   rnn_neurons: 256
-  rnn_layers: 1
+  rnn_layers: 2
   rnn_bidirectional: False
-  rnn_dropout: 0.3
+  rnn_dropout: 0.5
+
+word_metric: !new:torchmetrics.classification.Accuracy
+  task: multiclass
+  num_classes: word_outputs
+
+phone_metric: !new:torchmetrics.classification.Accuracy
+  task: multiclass
+  num_classes: phone_outputs
+
+#homolog_metric: !new:torchmetrics.classification.Accuracy
+#  task: multiclass
+#  num_classes: homolog_outputs
