@@ -110,7 +110,7 @@ def make_manifests(hparams):
 
     for lang in hparams["train_languages"]:
         data_root = pathlib.Path(hparams["data_folder"]) / lang
-        wavs = list(data_root.glob("*.wav"))
+        wavs = list(data_root.glob("*.flac"))
         test_size = valid_size = int(len(wavs) * hparams["test_portion"])
         subsets = {
             "test": wavs[:test_size],
