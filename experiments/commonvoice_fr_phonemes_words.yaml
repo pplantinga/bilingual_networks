@@ -71,13 +71,14 @@ precision: bf16
 
 dataloader_options:
   batch_size: !ref <batch_size>
-  num_workers: 4
+  num_workers: 8
 
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
   limit: !ref <num_epochs>
 
 opt_class: !name:torch.optim.Adam
   lr: !ref <lr>
+  weight_decay: 0.0001
 
 lr_annealing: !name:torch.optim.lr_scheduler.ReduceLROnPlateau
     factor: !ref <lr_factor>
@@ -99,7 +100,7 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_neurons: 256
   rnn_layers: 2
   rnn_bidirectional: False
-  rnn_dropout: 0.5
+  rnn_dropout: 0.1
 
 word_metric: !new:torchmetrics.classification.Accuracy
   task: multiclass
