@@ -18,6 +18,7 @@ import logging
 import pathlib
 import textgrid
 import torchaudio
+import numpy as np
 import pandas as pd
 import speechbrain as sb
 from hyperpyyaml import load_hyperpyyaml
@@ -52,19 +53,15 @@ class BilingualBrain(sb.Brain):
             self.hparams.phone_metric(phn_out.transpose(1, 2), phn_targets)
 
         #return wrd_loss + phn_loss + hlg_loss
-        return 0.1 * wrd_loss + phn_loss
+        return wrd_loss + phn_loss
 
     def compute_loss(self, predictions, targets):
         """Compute cross-entropy loss, ignoring the "silence" and padding index: 0"""
         # Move time dimension to end for predictions
-        #predictions = predictions.transpose(1, 2)
+        predictions = predictions.transpose(1, 2)
 
-        # Collapse batch & time dimensions
-        classes = predictions.size(-1)
-        predictions = predictions.view(-1, classes)
-        targets = targets.view(-1)
         # Ignore silences and padding
-        return torch.nn.functional.cross_entropy(predictions, targets)#, ignore_index=0)
+        return torch.nn.functional.cross_entropy(predictions, targets, ignore_index=0)
 
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
@@ -219,7 +216,14 @@ def make_encoders(hparams):
 
 def make_datasets(hparams):
     """Create data pipelines for all stages, and label encoders."""
-    resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000)
+
+    # Precompute stuff for downsampling and cropping
+    resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000, lowpass_filter_width=4)
+    target_rate = hparams["fs"] // hparams["downsample_factor"]
+    crop_len = int(hparams["random_crop_len"] * target_rate) + 1
+
+    def time2rate(time):
+        return int(time * target_rate)
 
     @sb.utils.data_pipeline.takes("lang", "wav", "wrd_grid", "phn_grid", "frame_count")
     @sb.utils.data_pipeline.provides("lang_enc", "signal", "wrd_targets", "phn_targets")#, "hlg_targets")
@@ -232,35 +236,34 @@ def make_datasets(hparams):
         # Resample audio to target rate
         audio = sb.dataio.dataio.read_audio(wav)
         audio = resampler(audio)
-        frame_count = frame_count // 3
 
         # Select random crop of the audio
-        ds_fac = hparams["downsample_factor"]
-        target_rate = hparams["fs"] // ds_fac
-        random_crop_len = int(hparams["random_crop_len"] * target_rate) + 1
-        max_start = max(1, frame_count // ds_fac - random_crop_len)
-        crop_start = torch.randint(max_start, size=(1,)).item() * ds_fac
-        crop_end = (crop_start + random_crop_len - 1) * ds_fac
-        signal = audio[crop_start:crop_end]
+        df = hparams["downsample_factor"]
+        max_start = max(1, len(audio) // df - crop_len)
+        crop_start = np.random.randint(max_start)
+        crop_end = crop_start + crop_len - 1
+        signal = audio[crop_start * df:crop_end * df]
 
         # Create time-aligned target vectors based on alignment info in manifest
-        wrd_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
-        phn_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
-        #hlg_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
+        wrd_label_sequence = torch.zeros(crop_len, dtype=torch.long)
+        phn_label_sequence = torch.zeros(crop_len, dtype=torch.long)
+        #hlg_label_sequence = torch.zeros(crop_len, dtype=torch.long)
 
         # Iterate words to create frame-level targets at the specified rate
         for wrd, start, stop in wrd_timings:
-            start = max(int(start * target_rate) - crop_start, 0)
-            stop = min(int(stop * target_rate) - crop_start, random_crop_len)
-            if stop > 0 and start < random_crop_len:
-                wrd_label_sequence[start:stop] = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang)
+            start_idx = max(time2rate(start) - crop_start, 0)
+            stop_idx = min(time2rate(stop) - crop_start, crop_len)
+            if stop_idx > 0 and start_idx < crop_len:
+                encoded_wrd = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang)
+                wrd_label_sequence[start_idx:stop_idx] = encoded_wrd
 
         # Iterate phonemees to create frame-level targets at the specified rate
         for phn, start, stop in phn_timings:
-            start = max(int(start * target_rate) - crop_start, 0)
-            stop = min(int(stop * target_rate) - crop_start, random_crop_len)
-            if stop > 0 and start < random_crop_len:
-                phn_label_sequence[start:stop] = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang)
+            start_idx = max(time2rate(start) - crop_start, 0)
+            stop_idx = min(time2rate(stop) - crop_start, crop_len)
+            if stop_idx > 0 and start_idx < crop_len:
+                encoded_phn = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang)
+                phn_label_sequence[start_idx:stop_idx] = encoded_phn
                 #hlg = hparams[f"phn2hlg_{lang}"][phn]
                 #hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
 
