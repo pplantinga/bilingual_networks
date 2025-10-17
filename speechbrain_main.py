@@ -245,8 +245,8 @@ def make_datasets(hparams):
         signal = audio[crop_start * df:crop_end * df]
 
         # Create time-aligned target vectors based on alignment info in manifest
-        wrd_label_sequence = torch.zeros(crop_len, dtype=torch.long)
-        phn_label_sequence = torch.zeros(crop_len, dtype=torch.long)
+        wrd_label_sequence = np.zeros(crop_len, dtype=int)
+        phn_label_sequence = np.zeros(crop_len, dtype=int)
         #hlg_label_sequence = torch.zeros(crop_len, dtype=torch.long)
 
         # Iterate words to create frame-level targets at the specified rate
