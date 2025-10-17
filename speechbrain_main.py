@@ -110,7 +110,7 @@ def make_manifests(hparams):
 
     for lang in hparams["train_languages"]:
         data_root = pathlib.Path(hparams["data_folder"]) / lang
-        wavs = list(data_root.glob("*.flac"))
+        wavs = list(data_root.glob("*.mp3"))
         test_size = valid_size = int(len(wavs) * hparams["test_portion"])
         subsets = {
             "test": wavs[:test_size],
@@ -219,6 +219,7 @@ def make_encoders(hparams):
 
 def make_datasets(hparams):
     """Create data pipelines for all stages, and label encoders."""
+    resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000)
 
     @sb.utils.data_pipeline.takes("lang", "wav", "wrd_grid", "phn_grid", "frame_count")
     @sb.utils.data_pipeline.provides("lang_enc", "signal", "wrd_targets", "phn_targets")#, "hlg_targets")
@@ -228,15 +229,19 @@ def make_datasets(hparams):
         # No extra computation needed
         lang_enc = hparams["lang_encoder"].encode_label(lang)
 
-        # Select random crop of the audio
+        # Resample audio to target rate
         audio = sb.dataio.dataio.read_audio(wav)
-        target_size = frame_count // hparams["downsample_factor"]
-        target_rate = hparams["fs"] // hparams["downsample_factor"]
-        random_crop_len = int(hparams["random_crop_len"] * target_rate) + 1
-        crop_start = torch.randint(max(target_size - random_crop_len, 1), size=(1,)).item()
+        audio = resampler(audio)
+        frame_count = frame_count // 3
 
-        signal_end = (crop_start + random_crop_len - 1) * hparams["downsample_factor"]
-        signal = audio[crop_start * hparams["downsample_factor"]:signal_end]
+        # Select random crop of the audio
+        ds_fac = hparams["downsample_factor"]
+        target_rate = hparams["fs"] // ds_fac
+        random_crop_len = int(hparams["random_crop_len"] * target_rate) + 1
+        max_start = max(1, frame_count // ds_fac - random_crop_len)
+        crop_start = torch.randint(max_start, size=(1,)).item() * ds_fac
+        crop_end = (crop_start + random_crop_len - 1) * ds_fac
+        signal = audio[crop_start:crop_end]
 
         # Create time-aligned target vectors based on alignment info in manifest
         wrd_label_sequence = torch.zeros(random_crop_len, dtype=torch.long)
