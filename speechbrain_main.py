@@ -160,13 +160,10 @@ def make_json(filename, subset, lang):
 
 def make_item(wav, lang):
     """Create a single item of the manifest, to be run in parallel"""
-    grid = textgrid.TextGrid.fromFile(wav.with_suffix(".TextGrid"))
     item = {
         "wav": str(wav),
         "lang": lang,
         "frame_count": torchaudio.info(wav).num_frames,
-        "wrd_grid": convert_to_tuples(grid.getList("words")[0]),
-        "phn_grid": convert_to_tuples(grid.getList("phones")[0]),
     }
 
     return (wav.stem, item)
@@ -246,9 +243,9 @@ def make_datasets(hparams):
     def time2rate(time):
         return int(time * target_rate)
 
-    @sb.utils.data_pipeline.takes("lang", "wav", "wrd_grid", "phn_grid", "frame_count")
+    @sb.utils.data_pipeline.takes("lang", "wav", "frame_count")
     @sb.utils.data_pipeline.provides("lang_enc", "signal", "wrd_targets", "phn_targets")#, "hlg_targets")
-    def data_pipeline(lang, wav, wrd_timings, phn_timings, frame_count):
+    def data_pipeline(lang, wav, frame_count):
         """Encode the inputs/targets"""
 
         # No extra computation needed
@@ -266,12 +263,14 @@ def make_datasets(hparams):
         signal = audio[crop_start * df:crop_end * df]
 
         # Create time-aligned target vectors based on alignment info in manifest
+        grid_path = pathlib.Path(wav).with_suffix(".TextGrid")
+        grid = textgrid.TextGrid.fromFile(grid_path)
         wrd_label_sequence = np.zeros(crop_len, dtype=int)
         phn_label_sequence = np.zeros(crop_len, dtype=int)
         #hlg_label_sequence = torch.zeros(crop_len, dtype=torch.long)
 
         # Iterate words to create frame-level targets at the specified rate
-        for wrd, start, stop in wrd_timings:
+        for wrd, start, stop in convert_to_tuples(grid.getList("words")[0]):
             start_idx = max(time2rate(start) - crop_start, 0)
             stop_idx = min(time2rate(stop) - crop_start, crop_len)
             if stop_idx > 0 and start_idx < crop_len:
@@ -279,7 +278,7 @@ def make_datasets(hparams):
                 wrd_label_sequence[start_idx:stop_idx] = encoded_wrd
 
         # Iterate phonemees to create frame-level targets at the specified rate
-        for phn, start, stop in phn_timings:
+        for phn, start, stop in convert_to_tuples(grid.getList("phones")[0]):
             start_idx = max(time2rate(start) - crop_start, 0)
             stop_idx = min(time2rate(stop) - crop_start, crop_len)
             if stop_idx > 0 and start_idx < crop_len:

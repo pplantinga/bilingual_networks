@@ -81,7 +81,7 @@ class WordPhoneModel(torch.nn.Module):
         cnn_kernelsize=3,
         lang_embedding_size=5,
         chance_lang_unknown=0.5,
-        rnn_class=sb.nnet.RNN.GRU,
+        rnn_class=torch.nn.GRU,
         rnn_layers=1,
         rnn_neurons=256,
         rnn_dropout=0.2,
@@ -113,11 +113,12 @@ class WordPhoneModel(torch.nn.Module):
 
         # First level RNN takes CNN + language embedding as inputs
         self.phoneRNN = rnn_class(
-            input_shape=[64, 100, cnn_channels + lang_embedding_size],
+            input_size=cnn_channels + lang_embedding_size,
             hidden_size=rnn_neurons,
             num_layers=rnn_layers,
             dropout=rnn_dropout,
             bidirectional=rnn_bidirectional,
+            batch_first=True,
         )
 
         self.dropout = torch.nn.Dropout(rnn_dropout)
@@ -134,11 +135,12 @@ class WordPhoneModel(torch.nn.Module):
 
         # Second level of RNN
         self.wordRNN = rnn_class(
-            input_shape=[64, 100, rnn_neurons],
+            input_size=rnn_neurons,
             hidden_size=rnn_neurons,
             num_layers=rnn_layers,
             dropout=rnn_dropout,
             bidirectional=False,
+            batch_first=True,
         )
 
         # Final output
