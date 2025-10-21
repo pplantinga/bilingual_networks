@@ -26,6 +26,12 @@ from hyperpyyaml import load_hyperpyyaml
 logger = sb.utils.logger.get_logger("speechbrain_main.py")
 
 
+import psutil
+import os
+
+# Get current process ID
+process = psutil.Process(os.getpid())
+
 class BilingualBrain(sb.Brain):
     def compute_forward(self, batch, stage):
         """Computes forward pass from wavs to phonemes and wrd"""
@@ -66,16 +72,31 @@ class BilingualBrain(sb.Brain):
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
 
+        print(f"Finished stage {stage}")
+
+        # Get CPU and memory usage in bytes
+        cpu_usage = process.cpu_percent(interval=0.1)
+        memory_info = process.memory_info()
+        memory_usage_bytes = memory_info.rss  # Resident Set Size
+
+        #print(f"CPU Usage: {cpu_usage:.2f}%")
+        print(f"Memory Usage: {memory_usage_bytes / (1024 * 1024):.2f} MB")
+
+        # Add diagnostic
+        if torch.cuda.is_available():
+            print(f"{stage} - GPU memory: {torch.cuda.memory_allocated()/1e9:.2f}GB")
+
+
         if stage != sb.Stage.TRAIN:
             stats={
                 "loss": stage_loss,
-                "wrd_acc": self.hparams.word_metric.compute(),
-                "phn_acc": self.hparams.phone_metric.compute(),
+                "wrd_acc": round(self.hparams.word_metric.compute().item(), 3),
+                "phn_acc": round(self.hparams.phone_metric.compute().item(), 3),
                 #"hlg_acc": self.hparams.homolog_metric.compute(),
             }
 
         if stage == sb.Stage.VALID:
-            self.scheduler.step(stats["phn_acc"])
+            #self.scheduler.step(stats["phn_acc"])
             self.hparams.word_metric.reset()
             self.hparams.phone_metric.reset()
 
@@ -95,11 +116,11 @@ class BilingualBrain(sb.Brain):
         """Initialize optimizer, scheduler and add to checkpointer"""
         self.optimizer = self.opt_class(self.modules.parameters())
         self.optimizers_dict = {"opt_class": self.optimizer}
-        self.scheduler = self.hparams.lr_annealing(self.optimizer)
+        #self.scheduler = self.hparams.lr_annealing(self.optimizer)
 
         if self.checkpointer is not None:
             self.checkpointer.add_recoverable("optimizer", self.optimizer)
-            self.checkpointer.add_recoverable("scheduler", self.scheduler)
+            #self.checkpointer.add_recoverable("scheduler", self.scheduler)
 
 
 def make_manifests(hparams):
