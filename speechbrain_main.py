@@ -20,6 +20,7 @@ import textgrid
 import torchaudio
 import numpy as np
 import pandas as pd
+import soundfile as sf
 import speechbrain as sb
 from hyperpyyaml import load_hyperpyyaml
 
@@ -251,15 +252,18 @@ def make_datasets(hparams):
 
         # Resample audio to target rate
         with torch.no_grad():
-            resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000, lowpass_filter_width=4)
-            audio = sb.dataio.dataio.read_audio(wav)
-            audio = resampler(audio)
+            #resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000, lowpass_filter_width=4)
+            #audio = sb.dataio.dataio.read_audio(wav)
+            audio, sr = sf.read(wav)
+            audio = audio[::3].astype(np.float32)
+            #audio = resampler(audio)
 
-        # Select random crop of the audio
-        max_start = max(1, len(audio) // df - max_crop_len)
-        crop_start = np.random.randint(max_start)
-        crop_end = crop_start + max_crop_len - 1
-        signal = audio[crop_start * df:crop_end * df]
+            # Select random crop of the audio
+            max_start = max(1, len(audio) // df - max_crop_len)
+            crop_start = np.random.randint(max_start)
+            crop_end = crop_start + max_crop_len - 1
+            signal = audio[crop_start * df:crop_end * df].copy()
+            del audio
 
         return signal, crop_start
 

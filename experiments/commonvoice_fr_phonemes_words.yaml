@@ -105,12 +105,12 @@ model: !new:word_phone_model.WordPhoneModel
 word_metric: !new:torchmetrics.classification.Accuracy
   task: multiclass
   num_classes: !ref <word_outputs>
-  #ignore_index: 0
+  ignore_index: 0
 
 phone_metric: !new:torchmetrics.classification.Accuracy
   task: multiclass
   num_classes: !ref <phone_outputs>
-  #ignore_index: 0
+  ignore_index: 0
 
 #homolog_metric: !new:torchmetrics.classification.Accuracy
 #  task: multiclass
