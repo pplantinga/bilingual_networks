@@ -274,7 +274,7 @@ def make_datasets(hparams):
             start_idx = max(time2rate(start) - crop_start, 0)
             stop_idx = min(time2rate(stop) - crop_start, crop_len)
             if stop_idx > 0 and start_idx < crop_len:
-                encoded_wrd = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang)
+                encoded_wrd = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang).item()
                 wrd_label_sequence[start_idx:stop_idx] = encoded_wrd
 
         # Iterate phonemees to create frame-level targets at the specified rate
@@ -282,7 +282,7 @@ def make_datasets(hparams):
             start_idx = max(time2rate(start) - crop_start, 0)
             stop_idx = min(time2rate(stop) - crop_start, crop_len)
             if stop_idx > 0 and start_idx < crop_len:
-                encoded_phn = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang)
+                encoded_phn = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang).item()
                 phn_label_sequence[start_idx:stop_idx] = encoded_phn
                 #hlg = hparams[f"phn2hlg_{lang}"][phn]
                 #hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
