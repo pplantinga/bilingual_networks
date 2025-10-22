@@ -67,7 +67,7 @@ class BilingualBrain(sb.Brain):
         predictions = predictions.transpose(1, 2)
 
         # Ignore silences and padding
-        return torch.nn.functional.cross_entropy(predictions, targets, ignore_index=0)
+        return torch.nn.functional.cross_entropy(predictions, targets)#, ignore_index=0)
 
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
@@ -236,35 +236,46 @@ def make_datasets(hparams):
     """Create data pipelines for all stages, and label encoders."""
 
     # Precompute stuff for downsampling and cropping
-    resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000, lowpass_filter_width=4)
     target_rate = hparams["fs"] // hparams["downsample_factor"]
-    crop_len = int(hparams["random_crop_len"] * target_rate) + 1
+    max_crop_len = int(hparams["random_crop_len"] * target_rate) + 1
+    df = hparams["downsample_factor"]
 
-    def time2rate(time):
-        return int(time * target_rate)
+    @sb.utils.data_pipeline.takes("lang")
+    @sb.utils.data_pipeline.provides("lang_enc")
+    def lang_pipeline(lang):
+        return hparams["lang_encoder"].encode_label(lang)
 
-    @sb.utils.data_pipeline.takes("lang", "wav", "frame_count")
-    @sb.utils.data_pipeline.provides("lang_enc", "signal", "wrd_targets", "phn_targets")#, "hlg_targets")
-    def data_pipeline(lang, wav, frame_count):
-        """Encode the inputs/targets"""
-
-        # No extra computation needed
-        lang_enc = hparams["lang_encoder"].encode_label(lang)
+    @sb.utils.data_pipeline.takes("wav")
+    @sb.utils.data_pipeline.provides("signal", "crop_start")
+    def audio_pipeline(wav):
 
         # Resample audio to target rate
-        audio = sb.dataio.dataio.read_audio(wav)
-        audio = resampler(audio)
+        with torch.no_grad():
+            resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000, lowpass_filter_width=4)
+            audio = sb.dataio.dataio.read_audio(wav)
+            audio = resampler(audio)
 
         # Select random crop of the audio
-        df = hparams["downsample_factor"]
-        max_start = max(1, len(audio) // df - crop_len)
+        max_start = max(1, len(audio) // df - max_crop_len)
         crop_start = np.random.randint(max_start)
-        crop_end = crop_start + crop_len - 1
+        crop_end = crop_start + max_crop_len - 1
         signal = audio[crop_start * df:crop_end * df]
+
+        return signal, crop_start
+
+    @sb.utils.data_pipeline.takes("lang", "wav", "signal", "crop_start")
+    @sb.utils.data_pipeline.provides("wrd_targets", "phn_targets")#, "hlg_targets")
+    def label_pipeline(lang, wav, signal, crop_start):
+        """Encode the inputs/targets"""
+
+        def time2rate(time):
+            return int(time * target_rate)
+
 
         # Create time-aligned target vectors based on alignment info in manifest
         grid_path = pathlib.Path(wav).with_suffix(".TextGrid")
         grid = textgrid.TextGrid.fromFile(grid_path)
+        crop_len = len(signal) // df + 1
         wrd_label_sequence = np.zeros(crop_len, dtype=int)
         phn_label_sequence = np.zeros(crop_len, dtype=int)
         #hlg_label_sequence = torch.zeros(crop_len, dtype=torch.long)
@@ -287,14 +298,14 @@ def make_datasets(hparams):
                 #hlg = hparams[f"phn2hlg_{lang}"][phn]
                 #hlg_label_sequence[start:stop] = hparams["hlg_encoder"].encode_label_torch(hlg)
 
-        return lang_enc, signal, wrd_label_sequence, phn_label_sequence
+        return wrd_label_sequence, phn_label_sequence
         #yield hlg_label_sequence
 
     datasets = {}
     for stage in ["train", "valid", "test"]:
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset.from_json(
             json_path=hparams[f"{stage}_fr_manifest"],
-            dynamic_items=[data_pipeline],
+            dynamic_items=[lang_pipeline, audio_pipeline, label_pipeline],
             output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets"]#, "hlg_targets"],
         )#.filtered_sorted(sort_key="frame_count")
     
