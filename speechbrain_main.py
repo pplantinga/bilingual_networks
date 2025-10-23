@@ -33,6 +33,44 @@ import os
 # Get current process ID
 process = psutil.Process(os.getpid())
 
+
+class SimpleDynamicDataset(torch.utils.data.Dataset):
+    """
+    A minimal, non-leaky alternative to SpeechBrain's DynamicItemDataset.
+    Loads a JSON manifest and applies on-demand transforms defined as callables.
+
+    Arguments
+    ---------
+    json_path: str
+        Path to JSON manifest.
+    dynamic_items: dict[str, callable]
+        Mapping from new key -> function(sample_dict) -> value
+    output_keys: list[str]
+        Keys to include in the returned dict.
+   """
+
+    def __init__(self, json_path, dynamic_items=None, output_keys=None):
+        with open(json_path, "r") as f:
+            self.entries = list(json.load(f).values())
+        self.dynamic_items = dynamic_items or []
+        self.output_keys = output_keys
+
+    def __len__(self):
+        return len(self.entries)
+
+    def __getitem__(self, idx):
+        sample = dict(self.entries[idx])  # copy to avoid mutation leaks
+
+        # Compute dynamic items on-demand
+        for fn in self.dynamic_items:
+            fn(sample)
+
+        # If output_keys specified, filter
+        if self.output_keys:
+            sample = {k: sample[k] for k in self.output_keys if k in sample}
+
+        return sample
+
 class BilingualBrain(sb.Brain):
     def compute_forward(self, batch, stage):
         """Computes forward pass from wavs to phonemes and wrd"""
@@ -94,7 +132,7 @@ class BilingualBrain(sb.Brain):
                 "loss": stage_loss,
                 "wrd_acc": round(self.hparams.word_metric.compute().item(), 3),
                 "phn_acc": round(self.hparams.phone_metric.compute().item(), 3),
-                "hlg_acc": round(self.hparams.phone_metric.compute().item(), 3),
+                "hlg_acc": round(self.hparams.homolog_metric.compute().item(), 3),
             }
 
         if stage == sb.Stage.VALID:
@@ -242,45 +280,33 @@ def make_datasets(hparams):
     max_crop_len = int(hparams["random_crop_len"] * target_rate) + 1
     df = hparams["downsample_factor"]
 
-    @sb.utils.data_pipeline.takes("lang")
-    @sb.utils.data_pipeline.provides("lang_enc")
-    def lang_pipeline(lang):
-        return hparams["lang_encoder"].encode_label(lang)
+    def time2rate(time):
+        return int(time * target_rate)
 
-    @sb.utils.data_pipeline.takes("wav")
-    @sb.utils.data_pipeline.provides("signal", "crop_start")
-    def audio_pipeline(wav):
+    def lang_pipeline(item):
+        item["lang_enc"] = hparams["lang_encoder"].encode_label(item["lang"])
 
-        # Resample audio to target rate
-        with torch.no_grad():
-            #resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000, lowpass_filter_width=4)
-            #audio = sb.dataio.dataio.read_audio(wav)
-            audio, sr = sf.read(wav)
-            audio = audio[::3].astype(np.float32)
-            #audio = resampler(audio)
+    @torch.no_grad()
+    def audio_pipeline(item):
+        audio, sr = torchaudio.load(item["wav"])
+        resampler = torchaudio.transforms.Resample(orig_freq=48000, new_freq=16000, lowpass_filter_width=4)
+        audio = resampler(audio).squeeze(0)
 
-            # Select random crop of the audio
-            max_start = max(1, len(audio) // df - max_crop_len)
-            crop_start = np.random.randint(max_start)
-            crop_end = crop_start + max_crop_len - 1
-            signal = audio[crop_start * df:crop_end * df].copy()
-            del audio
+        # Select random crop of the audio
+        max_start = max(1, len(audio) // df - max_crop_len)
+        crop_start = np.random.randint(max_start)
+        crop_end = crop_start + max_crop_len - 1
+        signal = audio[crop_start * df:crop_end * df].clone()
+        item["crop_start"] = crop_start
+        item["signal"] = signal
+        del audio
 
-        return signal, crop_start
-
-    @sb.utils.data_pipeline.takes("lang", "wav", "signal", "crop_start")
-    @sb.utils.data_pipeline.provides("wrd_targets", "phn_targets", "hlg_targets")
-    def label_pipeline(lang, wav, signal, crop_start):
-        """Encode the inputs/targets"""
-
-        def time2rate(time):
-            return int(time * target_rate)
-
-
-        # Create time-aligned target vectors based on alignment info in manifest
-        grid_path = pathlib.Path(wav).with_suffix(".TextGrid")
+    @torch.no_grad()
+    def label_pipeline(item):
+        grid_path = pathlib.Path(item["wav"]).with_suffix(".TextGrid")
         grid = textgrid.TextGrid.fromFile(grid_path)
-        crop_len = len(signal) // df + 1
+        crop_len = len(item["signal"]) // df + 1
+        crop_start = item["crop_start"]
         wrd_label_sequence = np.zeros(crop_len, dtype=int)
         phn_label_sequence = np.zeros(crop_len, dtype=int)
         hlg_label_sequence = np.zeros(crop_len, dtype=int)
@@ -290,28 +316,31 @@ def make_datasets(hparams):
             start_idx = max(time2rate(start) - crop_start, 0)
             stop_idx = min(time2rate(stop) - crop_start, crop_len)
             if stop_idx > 0 and start_idx < crop_len:
-                encoded_wrd = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang).item()
+                encoded_wrd = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + item["lang"]).item()
                 wrd_label_sequence[start_idx:stop_idx] = encoded_wrd
+
+        item["wrd_targets"] = wrd_label_sequence
 
         # Iterate phonemees to create frame-level targets at the specified rate
         for phn, start, stop in convert_to_tuples(grid.getList("phones")[0]):
             start_idx = max(time2rate(start) - crop_start, 0)
             stop_idx = min(time2rate(stop) - crop_start, crop_len)
             if stop_idx > 0 and start_idx < crop_len:
-                encoded_phn = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang).item()
+                encoded_phn = hparams["phn_encoder"].encode_label_torch(phn + "_" + item["lang"]).item()
                 phn_label_sequence[start_idx:stop_idx] = encoded_phn
-                hlg = hparams[f"phn2hlg_{lang}"][phn]
+                hlg = hparams[f"phn2hlg_{item['lang']}"][phn]
                 hlg_label_sequence[start_idx:stop_idx] = hparams["hlg_encoder"].encode_label_torch(hlg).item()
 
-        return wrd_label_sequence, phn_label_sequence, hlg_label_sequence
+        item["phn_targets"] = phn_label_sequence
+        item["hlg_targets"] = hlg_label_sequence
 
     datasets = {}
     for stage in ["train", "valid", "test"]:
-        datasets[stage] = sb.dataio.dataset.DynamicItemDataset.from_json(
+        datasets[stage] = SimpleDynamicDataset(
             json_path=hparams[f"{stage}_fr_manifest"],
             dynamic_items=[lang_pipeline, audio_pipeline, label_pipeline],
-            output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets", "hlg_targets"],
-        )#.filtered_sorted(sort_key="frame_count")
+            output_keys=["signal", "lang_enc", "wrd_targets", "phn_targets", "hlg_targets"],
+        )
     
     return datasets
 
