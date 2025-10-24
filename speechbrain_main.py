@@ -84,6 +84,16 @@ class BilingualBrain(sb.Brain):
 
     def compute_objectives(self, predictions, batch, stage):
         """Computes the loss between predicted and actual wrd and phonemes."""
+
+
+        # Get CPU and memory usage in bytes
+        cpu_usage = process.cpu_percent(interval=0.1)
+        memory_info = process.memory_info()
+        memory_usage_bytes = memory_info.rss  # Resident Set Size
+
+        #print(f"CPU Usage: {cpu_usage:.2f}%")
+        print(f"Memory Usage: {memory_usage_bytes / (1024 * 1024):.2f} MB")
+
         wrd_out, phn_out, hlg_out = predictions
         # Ignore lengths, they should match the predictions by design
         wrd_targets, _ = batch.wrd_targets
@@ -113,14 +123,6 @@ class BilingualBrain(sb.Brain):
         """Compute metrics and save progress"""
 
         print(f"Finished stage {stage}")
-
-        # Get CPU and memory usage in bytes
-        cpu_usage = process.cpu_percent(interval=0.1)
-        memory_info = process.memory_info()
-        memory_usage_bytes = memory_info.rss  # Resident Set Size
-
-        #print(f"CPU Usage: {cpu_usage:.2f}%")
-        print(f"Memory Usage: {memory_usage_bytes / (1024 * 1024):.2f} MB")
 
         # Add diagnostic
         if torch.cuda.is_available():
