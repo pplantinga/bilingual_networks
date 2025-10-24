@@ -113,7 +113,7 @@ class WordPhoneModel(torch.nn.Module):
 
         # First level RNN takes CNN + language embedding as inputs
         self.phoneRNN = rnn_class(
-            input_size=cnn_channels + lang_embedding_size,
+            input_size=cnn_channels,# + lang_embedding_size,
             hidden_size=rnn_neurons,
             num_layers=rnn_layers,
             dropout=rnn_dropout,
@@ -163,13 +163,14 @@ class WordPhoneModel(torch.nn.Module):
         cnn_out = self.CNN(mel_spectrogram)
 
         # Produces [batch, 1, lang_embed_size], some chance "unknown"
-        mask = (torch.rand_like(language.float()) < self.chance_lang_unknown)
-        language_masked = language * mask.long()
-        lang_embedding = self.lang_embedding(language_masked).unsqueeze(1)
+        #mask = (torch.rand_like(language.float()) < self.chance_lang_unknown)
+        #language_masked = language * mask.long()
+        #lang_embedding = self.lang_embedding(language_masked).unsqueeze(1)
 
         # Pass to RNN the CNN+lang_embedding concatenated on channel axis
-        lang_embedding = lang_embedding.repeat(1, cnn_out.size(1), 1)
-        rnn_in = torch.cat([cnn_out, lang_embedding], dim=2)
+        #lang_embedding = lang_embedding.repeat(1, cnn_out.size(1), 1)
+        #rnn_in = torch.cat([cnn_out, lang_embedding], dim=2)
+        rnn_in = cnn_out
         phone_rnn_out = self.dropout(self.phoneRNN(rnn_in)[0])
 
         # Produce intermediate outputs [batch, time, phone_out]

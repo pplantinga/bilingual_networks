@@ -92,31 +92,17 @@ lr_annealing: !name:torch.optim.lr_scheduler.ReduceLROnPlateau
 word_outputs: 8000
 phone_outputs: 86
 homolog_outputs: 57
-#model: !new:word_phone_model.WordPhoneModel
-#  input_size: !ref <n_mels>
-#  languages: 2
-#  word_outputs: !ref <word_outputs>
-#  phone_outputs: !ref <phone_outputs>
-  #homolog_outputs: !ref <homolog_outputs>
-#  cnn_channels: 128
-#  rnn_neurons: 256
-#  rnn_layers: 2
-#  rnn_bidirectional: False
-#  rnn_dropout: 0.1
-model: !new:models.ASRSpecNet
-  config: !new:types.SimpleNamespace
-    fs: 16000
-    n_mel: 128
-    n_mfcc_out: 128
-    cnn_out_size: 128
-    rnn_hidden_size: 256
-    num_rnn_layers: 1
-    rnn_bidirectional: False
-    rnn_drop: 0.5
-    downsample_factor: 160
-    vocabulary_size: 7999
-    num_phonemes: 85
-    num_homologes: 56
+model: !new:word_phone_model.WordPhoneModel
+  input_size: !ref <n_mels>
+  languages: 2
+  word_outputs: !ref <word_outputs>
+  phone_outputs: !ref <phone_outputs>
+  homolog_outputs: !ref <homolog_outputs>
+  cnn_channels: 128
+  rnn_neurons: 512
+  rnn_layers: 3
+  rnn_bidirectional: False
+  rnn_dropout: 0.1
 
 word_metric: !new:torchmetrics.classification.Accuracy
   task: multiclass
