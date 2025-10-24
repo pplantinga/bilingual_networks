@@ -1,0 +1,70 @@
+#####################
+# Speechbrain recipe for Bilingual Networks -- Measuring Attrition
+#
+# Developed by:
+#  * Peter Plantinga (2025)
+# Based on (non-speechbrain) recipe by:
+#  * Peter Donhauser (2024)
+# Based on recipe by:
+#  * Loren Lugosch (2023?)
+# etc.
+seed: 12345
+__set_seed: !apply:torch.manual_seed [!ref <seed>]
+
+#######################
+# Data and storage hyperparameters
+data_folder: !PLACEHOLDER
+output_folder: !ref results/<seed>
+train_fr_manifest: manifests/train_fr.json
+valid_fr_manifest: manifests/valid_fr.json
+test_fr_manifest: manifests/test_fr.json
+
+###############
+# Feature hyperparameters
+# Corresponds to one frame every 10 ms
+# Window size == FFT bins == 32 ms
+fs: 16000
+downsample_factor: 160
+n_mels: 128
+n_fft: 512
+#time_shift: 0
+#n_output_quantize: 0
+
+compute_features: !new:speechbrain.lobes.features.Fbank
+  sample_rate: !ref <fs>
+  n_mels: !ref <n_mels>
+  n_fft: !ref <n_fft>
+  win_length: !ref <n_fft> * 1000 // <fs>
+  hop_length: !ref <downsample_factor> * 1000 // <fs>
+
+#################
+# Training hyperparameters
+lr: 0.001
+batch_size: 64
+num_epochs: 30
+#max_grad_norm: 5.0
+#random_crop_len: 2.5  # seconds
+#skip_nonfinite_grads: True
+precision: bf16
+
+dataloader_options:
+  batch_size: !ref <batch_size>
+  #num_workers: 4
+  #collate_fn: !name:speechbrain.dataio.batch.PaddedBatch
+  #  padded_keys: [signal, wrd_targets, phn_targets, hlg_targets]
+
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+  limit: !ref <num_epochs>
+
+opt_class: !name:torch.optim.Adam
+  lr: !ref <lr>
+  weight_decay: 0.0001
+
+#################
+# Model hyperparameters
+model: !new:torch.nn.GRU
+  input_size: !ref <n_mels>
+  hidden_size: 256
+  num_layers: 1
+  batch_first: True
+  bidirectional: False
