@@ -316,7 +316,7 @@ if __name__ == "__main__":
 
     # Create trainer
     bilingual_brain = BilingualBrain(
-        modules={k: hparams[k] for k in ["model", "word_metric", "phone_metric"]},
+        modules={k: hparams[k] for k in ["model", "word_metric", "phone_metric", "homolog_metric"]},
         opt_class=hparams["opt_class"],
         hparams=hparams,
         run_opts=run_opts,

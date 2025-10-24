@@ -60,7 +60,7 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 #################
 # Training hyperparameters
 lr: 0.001
-patience: 5
+patience: 1
 lr_factor: .1
 batch_size: 64
 num_epochs: 30
@@ -72,8 +72,6 @@ precision: bf16
 dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
-  collate_fn: !name:speechbrain.dataio.batch.PaddedBatch
-    padded_keys: [signal, wrd_targets, phn_targets, hlg_targets]
 
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
   limit: !ref <num_epochs>
@@ -83,16 +81,16 @@ opt_class: !name:torch.optim.Adam
   weight_decay: 0.0001
 
 lr_annealing: !name:torch.optim.lr_scheduler.ReduceLROnPlateau
-    factor: !ref <lr_factor>
-    patience: !ref <patience>
-    mode: max  # Measuring accuracy -- higher is better
+  factor: !ref <lr_factor>
+  patience: !ref <patience>
+  mode: max  # Measuring accuracy -- higher is better
 
 #################
 # Model hyperparameters
 word_outputs: 8000
 phone_outputs: 86
 homolog_outputs: 57
-model: !new:word_phone_model.WordPhoneModel
+model: !new:word_phone_pytorch.WordPhoneModel
   input_size: !ref <n_mels>
   languages: 2
   word_outputs: !ref <word_outputs>
