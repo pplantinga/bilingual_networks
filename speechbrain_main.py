@@ -26,6 +26,11 @@ from hyperpyyaml import load_hyperpyyaml
 
 logger = sb.utils.logger.get_logger("speechbrain_main.py")
 
+import gc
+import psutil
+import os
+
+process = psutil.Process(os.getpid())
 
 class BilingualBrain(sb.Brain):
     def compute_forward(self, batch, stage):
@@ -33,7 +38,8 @@ class BilingualBrain(sb.Brain):
         batch.to(self.device)
         signal, lens = batch.signal
         feats = self.hparams.compute_features(signal)
-        wrd_out, phn_out, hlg_out = self.modules.model(feats, batch.lang_enc)
+        #wrd_out, phn_out, hlg_out = self.modules.model(feats, batch.lang_enc)
+        phn_out, wrd_out, hlg_out, _, _, _ = self.modules.model((feats.transpose(1, 2), batch.lang_enc), lengths=None)
 
         return wrd_out, phn_out, hlg_out
 
@@ -62,10 +68,21 @@ class BilingualBrain(sb.Brain):
         predictions = predictions.transpose(1, 2)
 
         # Ignore silences and padding
-        return torch.nn.functional.cross_entropy(predictions, targets, ignore_index=0)
+        return torch.nn.functional.cross_entropy(input=predictions, target=targets, ignore_index=0)
 
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
+
+        gc.collect()
+        torch.cuda.empty_cache()
+        print("Cuda Allocated:", torch.cuda.memory_allocated()/1e6)
+        print("Cuda Reserved:", torch.cuda.memory_reserved()/1e6)
+        tensors = [o for o in gc.get_objects() if torch.is_tensor(o)]
+        print("num tensors:", len(tensors))
+        memory_info = process.memory_info()
+        memory_usage_bytes = memory_info.rss  # Resident Set Size
+        print(f"Memory Usage: {memory_usage_bytes / (1024 * 1024):.2f} MB")
+
 
         if stage != sb.Stage.TRAIN:
             stats={

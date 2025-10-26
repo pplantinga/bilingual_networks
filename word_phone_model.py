@@ -182,7 +182,7 @@ class WordPhoneModel(nn.Module):
         # Language embedding with random masking during training
         if self.training:
             mask = torch.rand(batch_size, device=language.device) < self.chance_lang_unknown
-            language_masked = language * (~mask).long()
+            language_masked = language * mask.long()
         else:
             language_masked = language
         
