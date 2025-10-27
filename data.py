@@ -155,7 +155,9 @@ class ASRDataset(AudioDataset):
         x, fs = self.read_audio(idx)
 
         # Downsample from 48000 to 16000
-        assert fs == 48000
+        if fs != 48000:
+            print(self.wav_paths[idx])
+            print("is not 48k but", fs)
         fs = 16000
         x = x[::3]
 
@@ -170,19 +172,19 @@ class ASRDataset(AudioDataset):
             for phoneme in tg.getList("phones")[0]:
                 duration = phoneme.maxTime - phoneme.minTime
                 phoneme = phoneme.mark.rstrip("0123456789")
-                if phoneme in ['sil', 'sp', 'spn']:
-                    index_offset = sum([len(ph) for ph in self.Sy_phoneme[:self.lang_sil]])
-                    phoneme_index = self.Sy_phoneme[self.lang_sil].index(phoneme) + index_offset
-                    homologe_index = self.Sy_homologe[self.lang_sil][phoneme]
+                #if phoneme in ['sil', 'sp', 'spn']:
+                #    index_offset = sum([len(ph) for ph in self.Sy_phoneme[:self.lang_sil]])
+                #    phoneme_index = self.Sy_phoneme[self.lang_sil].index(phoneme) + index_offset
+                #    homologe_index = self.Sy_homologe[self.lang_sil][phoneme]
+                #else:
+                if phoneme in self.Sy_phoneme[y_lang]:
+                    index_offset = sum([len(ph) for ph in self.Sy_phoneme[:y_lang]])
+                    phoneme_index = self.Sy_phoneme[y_lang].index(phoneme) + index_offset
+                    homologe_index = self.Sy_homologe[y_lang][phoneme]
                 else:
-                    if phoneme in self.Sy_phoneme[y_lang]:
-                        index_offset = sum([len(ph) for ph in self.Sy_phoneme[:y_lang]])
-                        phoneme_index = self.Sy_phoneme[y_lang].index(phoneme) + index_offset
-                        homologe_index = self.Sy_homologe[y_lang][phoneme]
-                    else:
-                        phoneme_index = -1
-                        homologe_index = -1
-                if phoneme == '': phoneme_index = -1
+                    phoneme_index = -1
+                    homologe_index = -1
+                #if phoneme == '': phoneme_index = -1
                 y_phoneme += [phoneme_index] * round(duration * fs)
                 y_homologe += [homologe_index] * round(duration * fs)
 
