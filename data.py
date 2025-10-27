@@ -295,6 +295,7 @@ def read_config(config_file):
 
     #[experiment]
     config.seed=int(parser.get("experiment", "seed"))
+    config.use_amp=parser.get("experiment", "use_amp") == "True"
     config.folder = os.path.splitext(config_file)[0]
     # config.folder=parser.get("experiment", "folder")
 

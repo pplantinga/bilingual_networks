@@ -117,8 +117,9 @@ class Trainer:
                 batch, self.config.pretraining_langin, self.config.pretraining_phoneout,
                 self.config.pretraining_wordout
             )
-            outputs = self.model(inputs, lengths)
-            loss, losses, accuracies = self.model.criterion(outputs, targets, lengths)
+            with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=self.config.use_amp):
+                outputs = self.model(inputs, lengths)
+                loss, losses, accuracies = self.model.criterion(outputs, targets, lengths)
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
