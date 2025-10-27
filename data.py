@@ -154,6 +154,10 @@ class ASRDataset(AudioDataset):
     def __getitem__(self, idx, snippet=None):
         x, fs = self.read_audio(idx)
 
+        # Downsample to 16000 from 48000
+        fs = 16000
+        x = x[::3]
+
         y_lang = self.lang_ind[idx]
 
         if os.path.isfile(self.textgrid_paths[idx]):
@@ -347,7 +351,7 @@ def load_manifest(manifest_path, datapath):
             filename = line.strip('\n')
             languages.append(filename.split('/')[0])
             filepath = os.path.join(datapath, filename)
-            wavfiles.append(filepath+'.wav')
+            wavfiles.append(filepath+'.mp3')
             tgfiles.append(filepath+'.TextGrid')
     return np.array(wavfiles), np.array(tgfiles), np.array(languages)
 
