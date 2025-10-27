@@ -117,7 +117,7 @@ class Trainer:
                 batch, self.config.pretraining_langin, self.config.pretraining_phoneout,
                 self.config.pretraining_wordout
             )
-            with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=self.config.use_amp):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=self.config.use_amp):
                 outputs = self.model(inputs, lengths)
                 loss, losses, accuracies = self.model.criterion(outputs, targets, lengths)
             self.optimizer.zero_grad()
