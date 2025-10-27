@@ -154,6 +154,11 @@ class ASRDataset(AudioDataset):
     def __getitem__(self, idx, snippet=None):
         x, fs = self.read_audio(idx)
 
+        # Downsample from 48000 to 16000
+        assert fs == 48000
+        fs = 16000
+        x = x[::3]
+
         y_lang = self.lang_ind[idx]
 
         if os.path.isfile(self.textgrid_paths[idx]):
@@ -165,12 +170,11 @@ class ASRDataset(AudioDataset):
             for phoneme in tg.getList("phones")[0]:
                 duration = phoneme.maxTime - phoneme.minTime
                 phoneme = phoneme.mark.rstrip("0123456789")
-                #if phoneme in ['sil', 'sp', 'spn']:
-                #    index_offset = sum([len(ph) for ph in self.Sy_phoneme[:self.lang_sil]])
-                #    phoneme_index = self.Sy_phoneme[self.lang_sil].index(phoneme) + index_offset
-                #    homologe_index = self.Sy_homologe[self.lang_sil][phoneme]
-                #else:
-                if True:
+                if phoneme in ['sil', 'sp', 'spn']:
+                    index_offset = sum([len(ph) for ph in self.Sy_phoneme[:self.lang_sil]])
+                    phoneme_index = self.Sy_phoneme[self.lang_sil].index(phoneme) + index_offset
+                    homologe_index = self.Sy_homologe[self.lang_sil][phoneme]
+                else:
                     if phoneme in self.Sy_phoneme[y_lang]:
                         index_offset = sum([len(ph) for ph in self.Sy_phoneme[:y_lang]])
                         phoneme_index = self.Sy_phoneme[y_lang].index(phoneme) + index_offset
