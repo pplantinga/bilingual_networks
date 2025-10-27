@@ -26,11 +26,6 @@ from hyperpyyaml import load_hyperpyyaml
 
 logger = sb.utils.logger.get_logger("speechbrain_main.py")
 
-#import gc
-#import psutil
-#import os
-
-#process = psutil.Process(os.getpid())
 
 class BilingualBrain(sb.Brain):
     def compute_forward(self, batch, stage):
@@ -38,11 +33,7 @@ class BilingualBrain(sb.Brain):
         batch.to(self.device)
         signal, lens = batch.signal
         feats = self.hparams.compute_features(signal)
-        #feats = self.modules.model.feat(signal)
-        wrd_out, phn_out, hlg_out = self.modules.model(feats, batch.lang_enc)
-        #phn_out, wrd_out, hlg_out, _, _, _ = self.modules.model((feats, batch.lang_enc), lengths=None)
-
-        return wrd_out, phn_out, hlg_out
+        return self.modules.model(feats, batch.lang_enc)
 
     def compute_objectives(self, predictions, batch, stage):
         """Computes the loss between predicted and actual wrd and phonemes."""
@@ -73,12 +64,6 @@ class BilingualBrain(sb.Brain):
 
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
-
-        #gc.collect()
-        #memory_info = process.memory_info()
-        #memory_usage_bytes = memory_info.rss  # Resident Set Size
-        #print(f"Memory Usage: {memory_usage_bytes / (1024 * 1024):.2f} MB")
-
 
         if stage != sb.Stage.TRAIN:
             stats={
@@ -226,6 +211,24 @@ def make_encoders(hparams):
     logger.info(f"# of (language-independent) homologs: {len(hparams['hlg_encoder'].ind2lab)}")
 
 
+@torch.no_grad()
+def load_audio_and_resample(wav, target_sr=16000):
+    audio, sr = sf.read(wav)
+    audio = audio.astype(np.float32)
+
+    # Faster to just take every other sample or whatever
+    if sr % target_sr == 0:
+        audio = audio[::sr // target_sr]
+    else:
+        audio = torchaudio.transforms.Resample(
+            orig_freq=sr,
+            new_freq=target_sr,
+            lowpass_filter_width=4,
+        )(torch.tensor(audio)).numpy()
+
+    return audio
+
+
 def make_datasets(hparams):
     """Create data pipelines for all stages, and label encoders."""
 
@@ -241,31 +244,24 @@ def make_datasets(hparams):
 
     @sb.utils.data_pipeline.takes("wav")
     @sb.utils.data_pipeline.provides("signal", "crop_start")
-    def audio_pipeline(wav):
+    def train_audio_pipeline(wav):
+        audio = load_audio_and_resample(wav, hparams["fs"])
 
-        # Resample audio to target rate
-        with torch.no_grad():
-            audio, sr = sf.read(wav)
-            audio = audio.astype(np.float32)
-            if sr == 48000:
-                audio = audio[::3]
-            elif sr == 32000:
-                audio = audio[::2]
-            else:
-                audio = torchaudio.transforms.Resample(
-                    orig_freq=sr,
-                    new_freq=16000,
-                    lowpass_filter_width=4,
-                )(torch.tensor(audio)).numpy()
+        # Select random crop of the audio
+        max_start = max(1, len(audio) // df - max_crop_len)
+        crop_start = np.random.randint(max_start)
+        crop_end = crop_start + max_crop_len - 1
+        signal = audio[crop_start * df:crop_end * df].copy()
+        del audio
 
-            # Select random crop of the audio
-            max_start = max(1, len(audio) // df - max_crop_len)
-            crop_start = np.random.randint(max_start)
-            crop_end = crop_start + max_crop_len - 1
-            signal = audio[crop_start * df:crop_end * df].copy()
-            del audio
-
+        # Return starting time so labels can be aligned
         return signal, crop_start
+
+    @sb.utils.data_pipeline.takes("wav")
+    @sb.utils.data_pipeline.provides("signal", "crop_start")
+    def test_audio_pipeline(wav):
+        audio = load_audio_and_resample(wav, hparams["fs"])
+        return audio, 0
 
     @sb.utils.data_pipeline.takes("lang", "wav", "signal", "crop_start")
     @sb.utils.data_pipeline.provides("wrd_targets", "phn_targets", "hlg_targets")
@@ -305,6 +301,7 @@ def make_datasets(hparams):
 
     datasets = {}
     for stage in ["train", "valid", "test"]:
+        audio_pipeline = train_audio_pipeline if stage == "train" else test_audio_pipeline
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset.from_json(
             json_path=hparams[f"{stage}_fr_manifest"],
             dynamic_items=[lang_pipeline, audio_pipeline, label_pipeline],
@@ -358,6 +355,5 @@ if __name__ == "__main__":
     # Test
     bilingual_brain.evaluate(
         datasets["test"],
-        max_key="accuracy",
         test_loader_kwargs=hparams["dataloader_options"],
     )

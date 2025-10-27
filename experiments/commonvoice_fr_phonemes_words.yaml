@@ -44,34 +44,35 @@ checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
 # Corresponds to one frame every 10 ms
 # Window size == FFT bins == 32 ms
 fs: 16000
-downsample_factor: 320 #160
+downsample_factor: 160
 n_mels: 128
 n_fft: 512
-#time_shift: 0
-#n_output_quantize: 0
 
-#compute_features: !new:speechbrain.lobes.features.Fbank
-#  sample_rate: !ref <fs>
-#  n_mels: !ref <n_mels>
-#  n_fft: !ref <n_fft>
-#  win_length: !ref <n_fft> * 1000 // <fs>
-#  hop_length: !ref <downsample_factor> * 1000 // <fs>
+# win_length and hop_length are in ms, convert from frames
+compute_features: !new:speechbrain.lobes.features.Fbank
+  sample_rate: !ref <fs>
+  n_mels: !ref <n_mels>
+  n_fft: !ref <n_fft>
+  win_length: !ref <n_fft> * 1000 // <fs>
+  hop_length: !ref <downsample_factor> * 1000 // <fs>
 
 #################
 # Training hyperparameters
 lr: 0.001
-patience: 1
+patience: 2
 lr_factor: .1
 batch_size: 64
 num_epochs: 30
 max_grad_norm: 5.0
 random_crop_len: 2.5  # seconds
 skip_nonfinite_grads: True
-precision: bf16
+
+# For some weird reason this seems to cause memory leaks
+#precision: bf16
 
 dataloader_options:
   batch_size: !ref <batch_size>
-  #num_workers: 4
+  num_workers: 4
 
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
   limit: !ref <num_epochs>
@@ -90,33 +91,17 @@ lr_annealing: !name:torch.optim.lr_scheduler.ReduceLROnPlateau
 word_outputs: 8000
 phone_outputs: 86
 homolog_outputs: 57
-#model: !new:word_phone_model.WordPhoneModel
-#  input_size: !ref <n_mels>
-#  languages: 2
-#  word_outputs: !ref <word_outputs>
-#  phone_outputs: !ref <phone_outputs>
-#  homolog_outputs: !ref <homolog_outputs>
-#  cnn_channels: 128
-#  rnn_neurons: 512
-#  rnn_layers: 3
-#  rnn_bidirectional: False
-#  rnn_dropout: 0.1
-
-model: !new:models.ASRSpecNet
-  config: !new:types.SimpleNamespace
-    fs: !ref <fs>
-    n_fft: !ref <n_fft>
-    n_mel: !ref <n_mels>
-    n_mfcc_out: !ref <n_mels>
-    cnn_out_size: 128
-    rnn_hidden_size: 256
-    num_rnn_layers: 1
-    rnn_bidirectional: False
-    rnn_drop: 0.1
-    downsample_factor: !ref <downsample_factor>
-    vocabulary_size: !ref <word_outputs> - 1
-    num_phonemes: !ref <phone_outputs> - 1
-    num_homologes: !ref <homolog_outputs> - 1
+model: !new:word_phone_model.WordPhoneModel
+  input_size: !ref <n_mels>
+  languages: 2
+  word_outputs: !ref <word_outputs>
+  phone_outputs: !ref <phone_outputs>
+  homolog_outputs: !ref <homolog_outputs>
+  cnn_channels: 128
+  rnn_neurons: 256
+  rnn_layers: 2
+  rnn_bidirectional: False
+  rnn_dropout: 0.3
 
 word_metric: !new:torchmetrics.classification.Accuracy
   task: multiclass
