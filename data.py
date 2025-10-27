@@ -1,4 +1,5 @@
 import torch
+import torchaudio
 import torch.utils.data
 import configparser
 import os
@@ -12,9 +13,6 @@ from collections import Counter
 import json
 from tqdm import tqdm
 import pandas as pd
-
-import torch
-import torch.utils.data
 
 from params import lang_order
 
@@ -154,12 +152,15 @@ class ASRDataset(AudioDataset):
     def __getitem__(self, idx, snippet=None):
         x, fs = self.read_audio(idx)
 
-        # Downsample from 48000 to 16000
-        if fs != 48000:
-            print(self.wav_paths[idx])
-            print("is not 48k but", fs)
+        # Downsample to 16000
+        if fs == 48000:
+            x = x[::3].copy()
+        elif fs == 32000:
+            x = x[::2].copy()
+        else:
+            resampler = torchaudio.transforms.Resample(orig_freq=fs, new_freq=16000, lowpass_filter_width=4)
+            x = resampler(torch.tensor(x).to(torch.float32)).numpy()
         fs = 16000
-        x = x[::3]
 
         y_lang = self.lang_ind[idx]
 
