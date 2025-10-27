@@ -152,7 +152,7 @@ class WordPhoneModel(nn.Module):
         # Final output
         self.word_out = nn.Linear(rnn_neurons, word_outputs)
 
-    def forward(self, mel_spectrogram, language):
+    def forward(self, data, lengths, h0=None):
         """Forward pass through the model.
 
         Arguments
@@ -171,11 +171,12 @@ class WordPhoneModel(nn.Module):
         homolog_out : torch.FloatTensor (optional)
             Homolog predictions [batch, time, homolog_outputs]
         """
-        batch_size, time_steps, _ = mel_spectrogram.shape
+        mel_spectrogram, language = data
+        batch_size, _, time_steps = mel_spectrogram.shape
 
         # CNN expects [batch, channels, time]
-        x = mel_spectrogram.transpose(1, 2)
-        cnn_out = self.cnn(x)
+        #x = mel_spectrogram.transpose(1, 2)
+        cnn_out = self.cnn(mel_spectrogram)
         # Back to [batch, time, channels]
         cnn_out = cnn_out.transpose(1, 2)
 
@@ -211,6 +212,7 @@ class WordPhoneModel(nn.Module):
         # Optional homolog output
         if self.homolog_outputs:
             homolog_out = self.homolog_out(phone_rnn_out)
-            return word_out, phone_out, homolog_out
+            #return word_out, phone_out, homolog_out
+            return phone_out, word_out, homolog_out
         
         return word_out, phone_out

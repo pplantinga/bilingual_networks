@@ -37,9 +37,10 @@ class BilingualBrain(sb.Brain):
         """Computes forward pass from wavs to phonemes and wrd"""
         batch.to(self.device)
         signal, lens = batch.signal
-        feats = self.hparams.compute_features(signal)
+        #feats = self.hparams.compute_features(signal)
+        feats = self.modules.model.feat(signal)
         #wrd_out, phn_out, hlg_out = self.modules.model(feats, batch.lang_enc)
-        phn_out, wrd_out, hlg_out, _, _, _ = self.modules.model((feats.transpose(1, 2), batch.lang_enc), lengths=None)
+        phn_out, wrd_out, hlg_out, _, _, _ = self.modules.model((feats, batch.lang_enc), lengths=None)
 
         return wrd_out, phn_out, hlg_out
 
@@ -74,11 +75,6 @@ class BilingualBrain(sb.Brain):
         """Compute metrics and save progress"""
 
         gc.collect()
-        torch.cuda.empty_cache()
-        print("Cuda Allocated:", torch.cuda.memory_allocated()/1e6)
-        print("Cuda Reserved:", torch.cuda.memory_reserved()/1e6)
-        tensors = [o for o in gc.get_objects() if torch.is_tensor(o)]
-        print("num tensors:", len(tensors))
         memory_info = process.memory_info()
         memory_usage_bytes = memory_info.rss  # Resident Set Size
         print(f"Memory Usage: {memory_usage_bytes / (1024 * 1024):.2f} MB")

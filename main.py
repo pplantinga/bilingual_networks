@@ -6,6 +6,9 @@ import models
 from training import Trainer
 import argparse
 import sys, os, json
+from word_phone_model import WordPhoneModel
+import torchaudio_contrib as tac
+
 
 def parse_args():
 
@@ -34,7 +37,27 @@ def setup_pretraining(config, datapath, num_workers, is_cpu):
         config.pretraining_manifest_test, num_workers)
 
     # Initialize model
-    model = getattr(models, config.type)(config=config)
+    #model = getattr(models, config.type)(config=config)
+    model = WordPhoneModel(
+        languages=5,
+        input_size=config.n_mel,
+        word_outputs=config.vocabulary_size,
+        phone_outputs=config.num_phonemes,
+        homolog_outputs=config.num_homologes,
+        cnn_channels=config.cnn_out_size,
+        rnn_layers=config.num_rnn_layers,
+        rnn_dropout=config.rnn_drop,
+        rnn_bidirectional=config.rnn_bidirectional,
+    ).to("cuda")
+    model.criterion = models.compute_criterion
+    model.losses = ['phonemes', 'words', 'homologes']
+    model.is_cuda = True
+    mel = tac.layers.Melspectrogram(
+        config.n_mel, config.fs, fft_length=2**10, hop_length=config.downsample_factor
+    )
+    model.feat = torch.nn.Sequential(mel, models.AmplitudeToDb()).to("cuda")
+    model.downsample_factor = config.downsample_factor
+
     if is_cpu:
         model.is_cuda = False
         model.cpu()

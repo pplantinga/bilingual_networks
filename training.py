@@ -92,7 +92,9 @@ class Trainer:
             y_lang_in[is_langin] = y_lang[is_langin]
         elif lang_input==2: # Always provide language tags
             y_lang_in = y_lang
-        if type(self.model).__name__=='ASRSpecNet':
+        if type(self.model).__name__=='ASRSpecNetPhonemes':
+            targets = [y[1]] # phonemes
+        else:
             if phone_target==0:
                 y[3].fill_(0)
                 y[1].fill_(0)
@@ -103,8 +105,6 @@ class Trainer:
             if word_target==0:
                 y[2].fill_(0)
             targets = [y[1], y[2], y[3]] # phonemes, words, homologes
-        elif type(self.model).__name__=='ASRSpecNetPhonemes':
-            targets = [y[1]] # phonemes
         inputs = [spec, y_lang_in]
         return inputs, targets, lengths
 

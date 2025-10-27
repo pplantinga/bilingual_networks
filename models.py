@@ -34,7 +34,7 @@ class SelectMels(torch.nn.Module):
     def forward(self, input):
         return input[:,:self.n_mel_select,:]
 
-def compute_criterion(inputs, targets, lengths, num_classes):
+def compute_criterion(inputs, targets, lengths, num_classes=(1, 2, 3)):
         losses = []
         accuracies = []
         for ii in range(len(num_classes)):
@@ -52,7 +52,7 @@ class SpecNet(torch.nn.Module):
     def __init__(self, config):
         super(SpecNet, self).__init__()
         self.is_cuda = torch.cuda.is_available()
-        mel = tac.layers.Melspectrogram(128, config.fs, fft_length=2**10,
+        mel = tac.layers.Melspectrogram(128, config.fs, fft_length=config.n_fft,
         								hop_length=config.downsample_factor)
         self.feat = torch.nn.Sequential(mel, AmplitudeToDb(), SelectMels(config.n_mel))
         self.convnet = torch.nn.Sequential(

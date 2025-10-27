@@ -44,18 +44,18 @@ checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
 # Corresponds to one frame every 10 ms
 # Window size == FFT bins == 32 ms
 fs: 16000
-downsample_factor: 160
+downsample_factor: 320 #160
 n_mels: 128
 n_fft: 512
 #time_shift: 0
 #n_output_quantize: 0
 
-compute_features: !new:speechbrain.lobes.features.Fbank
-  sample_rate: !ref <fs>
-  n_mels: !ref <n_mels>
-  n_fft: !ref <n_fft>
-  win_length: !ref <n_fft> * 1000 // <fs>
-  hop_length: !ref <downsample_factor> * 1000 // <fs>
+#compute_features: !new:speechbrain.lobes.features.Fbank
+#  sample_rate: !ref <fs>
+#  n_mels: !ref <n_mels>
+#  n_fft: !ref <n_fft>
+#  win_length: !ref <n_fft> * 1000 // <fs>
+#  hop_length: !ref <downsample_factor> * 1000 // <fs>
 
 #################
 # Training hyperparameters
@@ -71,7 +71,7 @@ precision: bf16
 
 dataloader_options:
   batch_size: !ref <batch_size>
-  num_workers: 4
+  #num_workers: 4
 
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
   limit: !ref <num_epochs>
@@ -105,6 +105,7 @@ homolog_outputs: 57
 model: !new:models.ASRSpecNet
   config: !new:types.SimpleNamespace
     fs: !ref <fs>
+    n_fft: !ref <n_fft>
     n_mel: !ref <n_mels>
     n_mfcc_out: !ref <n_mels>
     cnn_out_size: 128
