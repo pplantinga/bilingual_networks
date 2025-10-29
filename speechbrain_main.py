@@ -53,6 +53,11 @@ class BilingualBrain(sb.Brain):
         # Ignore silences and padding
         return torch.nn.functional.cross_entropy(input=predictions, target=targets, ignore_index=0)
 
+    def on_fit_batch_end(self, batch, outputs, loss, should_step):
+        """Update LR after every batch"""
+        if should_step:
+            self.hparams.lr_annealing(self.optimizer)
+
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
 
@@ -65,7 +70,6 @@ class BilingualBrain(sb.Brain):
             }
 
         if stage == sb.Stage.VALID:
-            self.scheduler.step(stats["phn_acc"])
             self.hparams.word_metric.reset()
             self.hparams.phone_metric.reset()
             self.hparams.homolog_metric.reset()
@@ -81,16 +85,6 @@ class BilingualBrain(sb.Brain):
                 stats_meta={"Epoch loaded": self.hparams.epoch_counter.current},
                 test_stats=stats,
             )
-
-    def init_optimizers(self):
-        """Initialize optimizer, scheduler and add to checkpointer"""
-        self.optimizer = self.opt_class(self.modules.parameters())
-        self.optimizers_dict = {"opt_class": self.optimizer}
-        self.scheduler = self.hparams.lr_annealing(self.optimizer)
-
-        if self.checkpointer is not None:
-            self.checkpointer.add_recoverable("optimizer", self.optimizer)
-            self.checkpointer.add_recoverable("scheduler", self.scheduler)
 
 
 #######################################

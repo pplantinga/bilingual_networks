@@ -13,7 +13,7 @@ __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 #######################
 # Data and storage hyperparameters
-data_folder: !PLACEHOLDER
+data_folder: data
 output_folder: !ref results/<seed>
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
@@ -38,6 +38,7 @@ checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
   recoverables:
       model: !ref <model>
       counter: !ref <epoch_counter>
+      lr_annealing: !ref <lr_annealing>
 
 ###############
 # Feature hyperparameters
@@ -58,13 +59,11 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 
 #################
 # Training hyperparameters
-lr: 0.001
-patience: 2
-lr_factor: .1
+lr: 0.002
 batch_size: 64
 num_epochs: 30
 max_grad_norm: 5.0
-random_crop_len: 2.5  # seconds
+random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
 
 # For some weird reason this seems to cause memory leaks
@@ -73,6 +72,7 @@ skip_nonfinite_grads: True
 dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
+  shuffle: True
 
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
   limit: !ref <num_epochs>
@@ -81,10 +81,11 @@ opt_class: !name:torch.optim.Adam
   lr: !ref <lr>
   weight_decay: 0.0001
 
-lr_annealing: !name:torch.optim.lr_scheduler.ReduceLROnPlateau
-  factor: !ref <lr_factor>
-  patience: !ref <patience>
-  mode: max  # Measuring accuracy -- higher is better
+lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
+  lr: !ref <lr>
+  n_warmup_steps: 8000 # About one epoch
+  total_steps: 80000 # About ten epochs (for each decay factor)
+  decay_factor: 0.2
 
 #################
 # Model hyperparameters
@@ -99,9 +100,9 @@ model: !new:word_phone_model.WordPhoneModel
   homolog_outputs: !ref <homolog_outputs>
   cnn_channels: 128
   rnn_neurons: 256
-  rnn_layers: 2
+  rnn_layers: 1
   rnn_bidirectional: False
-  rnn_dropout: 0.3
+  rnn_dropout: 0.2
 
 word_metric: !new:torchmetrics.classification.Accuracy
   task: multiclass
