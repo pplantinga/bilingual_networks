@@ -1,0 +1,124 @@
+#####################
+# Speechbrain recipe for Bilingual Networks -- Measuring Attrition
+#
+# Developed by:
+#  * Peter Plantinga (2025)
+# Based on (non-speechbrain) recipe by:
+#  * Peter Donhauser (2024)
+# Based on recipe by:
+#  * Loren Lugosch (2023?)
+# etc.
+seed: 12345
+__set_seed: !apply:torch.manual_seed [!ref <seed>]
+
+#######################
+# Data and storage hyperparameters
+data_folder: data
+output_folder: !ref results/<seed>
+save_folder: !ref <output_folder>/save
+train_log: !ref <output_folder>/train_log.txt
+train_en_manifest: manifests/train_en.json
+valid_en_manifest: manifests/valid_en.json
+test_en_manifest: manifests/test_en.json
+supported_languages: ["fr", "en"]
+train_languages: ["en"]
+wrd_files:
+  fr: data/words_fr.csv
+  en: data/words_en.csv
+phn_files:
+  fr: data/phonemes_fr.csv
+  en: data/phonemes_en.csv
+test_portion: 0.05
+
+train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
+    save_file: !ref <train_log>
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+  checkpoints_dir: !ref <save_folder>
+  recoverables:
+      model: !ref <model>
+      counter: !ref <epoch_counter>
+      lr_annealing: !ref <lr_annealing>
+
+###############
+# Feature hyperparameters
+# Corresponds to one frame every 10 ms
+# Window size == FFT bins == 32 ms
+fs: 16000
+downsample_factor: 160
+n_mels: 128
+n_fft: 512
+
+# win_length and hop_length are in ms, convert from frames
+compute_features: !new:speechbrain.lobes.features.Fbank
+  sample_rate: !ref <fs>
+  n_mels: !ref <n_mels>
+  n_fft: !ref <n_fft>
+  win_length: !ref <n_fft> * 1000 // <fs>
+  hop_length: !ref <downsample_factor> * 1000 // <fs>
+
+#################
+# Training hyperparameters
+lr: 0.002
+batch_size: 64
+num_epochs: 30
+max_grad_norm: 5.0
+random_crop_len: 3.5  # seconds
+skip_nonfinite_grads: True
+
+# For some weird reason this seems to cause memory leaks
+#precision: bf16
+
+dataloader_options:
+  batch_size: !ref <batch_size>
+  num_workers: 4
+  shuffle: True
+
+test_loader_options:
+  batch_size: 4
+  num_workers: 4
+
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+  limit: !ref <num_epochs>
+
+opt_class: !name:torch.optim.Adam
+  lr: !ref <lr>
+  weight_decay: 0.0001
+
+lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
+  lr: !ref <lr>
+  n_warmup_steps: 8000 # About one epoch
+  total_steps: 80000 # About ten epochs (for each decay factor)
+  decay_factor: 0.2
+
+#################
+# Model hyperparameters
+word_outputs: 8000
+phone_outputs: 110
+homolog_outputs: 57
+model: !new:word_phone_model.WordPhoneModel
+  input_size: !ref <n_mels>
+  languages: 2
+  word_outputs: !ref <word_outputs>
+  phone_outputs: !ref <phone_outputs>
+  homolog_outputs: !ref <homolog_outputs>
+  cnn_channels: 128
+  rnn_neurons: 256
+  rnn_layers: 1
+  rnn_bidirectional: False
+  rnn_dropout: 0.2
+
+word_metric: !new:torchmetrics.classification.Accuracy
+  task: multiclass
+  num_classes: !ref <word_outputs>
+  ignore_index: 0
+
+phone_metric: !new:torchmetrics.classification.Accuracy
+  task: multiclass
+  num_classes: !ref <phone_outputs>
+  ignore_index: 0
+
+homolog_metric: !new:torchmetrics.classification.Accuracy
+  task: multiclass
+  num_classes: !ref <homolog_outputs>
+  ignore_index: 0

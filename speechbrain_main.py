@@ -125,11 +125,11 @@ if __name__ == "__main__":
         datasets["train"],
         datasets["valid"],
         train_loader_kwargs=hparams["dataloader_options"],
-        valid_loader_kwargs=hparams["dataloader_options"],
+        valid_loader_kwargs=hparams["test_loader_options"],
     )
 
     # Test
     bilingual_brain.evaluate(
         datasets["test"],
-        test_loader_kwargs=hparams["dataloader_options"],
+        test_loader_kwargs=hparams["test_loader_options"],
     )
