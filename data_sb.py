@@ -67,7 +67,7 @@ def make_item(wav, lang):
 translate_table = str.maketrans("ɖ", "d", "ʲʷʰː\u0329\u032A")
 def clean(mark):
     """Convert to somewhat simplified phoneme set"""
-    return mark.translate(translate_table).replace("m^{me}", "me")
+    return mark.translate(translate_table).replace("m^{me}", "me").replace("kp", "k")
 
 
 def convert_to_tuples(grid):
