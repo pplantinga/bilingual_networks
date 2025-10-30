@@ -1,4 +1,5 @@
 data/fr/*
+data/en/*
 __pycache__
 manifests
 results
