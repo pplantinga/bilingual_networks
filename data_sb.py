@@ -64,10 +64,13 @@ def make_item(wav, lang):
 
     return (wav.stem, item)
 
+translate_table = str.maketrans("", "", "ʲʷʰː")
+def clean(mark):
+    """Convert to somewhat simplified phoneme set"""
+    return mark.translate(translate_table).replace("m^{me}", "me").replace("d̪", "d")
+
 def convert_to_tuples(grid):
     """Convert grid to tuple of 'wrd', 'start', 'end'. """
-    def clean(mark):
-        return mark.replace("ʲ", "").replace("m^{me}", "me")
     return [(clean(i.mark), i.minTime, i.maxTime) for i in grid if i.mark]
 
 def read_label_file(filename, col):
@@ -220,7 +223,7 @@ def make_datasets(hparams):
     for stage in ["train", "valid", "test"]:
         audio_pipeline = train_audio_pipeline if stage == "train" else test_audio_pipeline
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset.from_json(
-            json_path=hparams[f"{stage}_fr_manifest"],
+            json_path=hparams[f"{stage}_en_manifest"],
             dynamic_items=[lang_pipeline, audio_pipeline, label_pipeline],
             output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets", "hlg_targets"],
         )#.filtered_sorted(sort_key="frame_count")
