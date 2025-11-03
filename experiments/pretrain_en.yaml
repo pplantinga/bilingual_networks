@@ -22,10 +22,10 @@ valid_en_manifest: manifests/valid_en.json
 test_en_manifest: manifests/test_en.json
 supported_languages: ["fr", "en"]
 train_languages: ["en"]
-wrd_files:
+word_files:
   fr: data/words_fr.csv
   en: data/words_en.csv
-phn_files:
+phon_files:
   fr: data/phonemes_fr.csv
   en: data/phonemes_en.csv
 test_portion: 0.05
@@ -61,7 +61,7 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 # Training hyperparameters
 lr: 0.002
 batch_size: 64
-num_epochs: 30
+num_epochs: 50
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
@@ -74,10 +74,6 @@ dataloader_options:
   num_workers: 4
   shuffle: True
 
-test_loader_options:
-  batch_size: 4
-  num_workers: 4
-
 epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
   limit: !ref <num_epochs>
 
@@ -89,36 +85,40 @@ lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
   lr: !ref <lr>
   n_warmup_steps: 8000 # About one epoch
   total_steps: 80000 # About ten epochs (for each decay factor)
-  decay_factor: 0.2
+  decay_factor: 0.3
 
 #################
 # Model hyperparameters
+phone_outputs: 57
+lang_outputs: 2
 word_outputs: 8000
-phone_outputs: 110
-homolog_outputs: 57
 model: !new:word_phone_model.WordPhoneModel
   input_size: !ref <n_mels>
-  languages: 2
-  word_outputs: !ref <word_outputs>
   phone_outputs: !ref <phone_outputs>
-  homolog_outputs: !ref <homolog_outputs>
+  lang_outputs: !ref <lang_outputs>
+  word_outputs: !ref <word_outputs>
   cnn_channels: 128
   rnn_neurons: 256
   rnn_layers: 1
   rnn_bidirectional: False
   rnn_dropout: 0.2
 
+phon_metric: !new:torchmetrics.classification.Accuracy
+  task: multiclass
+  num_classes: !ref <phone_outputs>
+  ignore_index: 0
+
+lang_metric: !new:torchmetrics.classification.Accuracy
+  task: multiclass
+  num_classes: !ref <lang_outputs>
+
 word_metric: !new:torchmetrics.classification.Accuracy
   task: multiclass
   num_classes: !ref <word_outputs>
   ignore_index: 0
 
-phone_metric: !new:torchmetrics.classification.Accuracy
-  task: multiclass
-  num_classes: !ref <phone_outputs>
-  ignore_index: 0
-
-homolog_metric: !new:torchmetrics.classification.Accuracy
-  task: multiclass
-  num_classes: !ref <homolog_outputs>
-  ignore_index: 0
+modules:
+  model: !ref <model>
+  phon_metric: !ref <phon_metric>
+  lang_metric: !ref <lang_metric>
+  word_metric: !ref <word_metric>

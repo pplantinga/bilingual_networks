@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import soundfile as sf
 import speechbrain as sb
+from speechbrain.dataio.sampler import ReproducibleWeightedRandomSampler as RWRSampler
 
 logger = sb.utils.logger.get_logger("speechbrain_data.py")
 
@@ -71,65 +72,47 @@ def clean(mark):
 
 
 def convert_to_tuples(grid):
-    """Convert grid to tuple of 'wrd', 'start', 'end'. """
+    """Convert grid to tuple of 'word', 'start', 'end'. """
     return [(clean(i.mark), i.minTime, i.maxTime) for i in grid if i.mark]
 
 def read_label_file(filename, col):
     """Read file with list of labels."""
     return pd.read_csv(filename)[col]
 
-def csv2map(filename, key_col, val_col):
-    """Create a mapping from one column of a csv to another"""
-    df = pd.read_csv(filename).dropna(subset=[key_col, val_col])
-    return {k: v for k, v in zip(df[key_col], df[val_col])}
 
 
 def make_encoders(hparams):
     # Language is set to "unknown" with some chance
     hparams["lang_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["lang_encoder"].expect_len(len(hparams["supported_languages"]) + 1)
-    hparams["lang_encoder"].add_unk()
+    hparams["lang_encoder"].expect_len(len(hparams["supported_languages"]))
     hparams["lang_encoder"].update_from_iterable(hparams["supported_languages"])
 
     # Put unknown words at index 0 and ignore them
-    hparams["wrd_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["wrd_encoder"].expect_len(hparams["word_outputs"])
-    hparams["wrd_encoder"].add_unk()
+    hparams["word_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+    hparams["word_encoder"].expect_len(hparams["word_outputs"])
+    hparams["word_encoder"].add_unk()
 
     # Add words from both languages so we don't have to modify architecture
     # Some words may be spelled the same but we disambiguate with a language tag
-    for lang, wrd_file in hparams["wrd_files"].items():
-        wrd_list = read_label_file(wrd_file, "word")
-        hparams["wrd_encoder"].update_from_iterable(wrd_list + "_" + lang)
+    for lang, word_file in hparams["word_files"].items():
+        word_list = read_label_file(word_file, "word")
+        hparams["word_encoder"].update_from_iterable(word_list + "_" + lang)
 
     # Index 0 is silence in all cases and can be safely ignored.
     # Montreal Forced Aligner uses "spn" as a sort of "unknown speech noise"
-    hparams["phn_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["phn_encoder"].expect_len(hparams["phone_outputs"])
-    hparams["phn_encoder"].add_label("sil")
-    hparams["phn_encoder"].add_label("spn")
-    hparams["hlg_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["hlg_encoder"].expect_len(hparams["homolog_outputs"])
-    hparams["hlg_encoder"].add_label("sil")
-    hparams["hlg_encoder"].add_label("spn")
+    # "spn" and "sil" are mapped to this unk label and ignored
+    hparams["phon_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+    hparams["phon_encoder"].expect_len(hparams["phone_outputs"])
+    hparams["phon_encoder"].add_unk()
 
     # Iterate language phone files to add all symbols to encoders
-    for lang, phn_file in hparams["phn_files"].items():
-
-        # Build map and convert phoneme labels to lang-independent homologs
-        phn2hlg = csv2map(phn_file, "ipa", "homolog")
-        phn2hlg["spn"] = "spn"
-        hparams[f"phn2hlg_{lang}"] = phn2hlg
-        hparams["hlg_encoder"].update_from_iterable(phn2hlg.values())
-
-        # Similarly to words, add language tag to disambiguate between languages
-        disambiguated_phns = [f"{phn}_{lang}" for phn in phn2hlg]
-        hparams["phn_encoder"].update_from_iterable(disambiguated_phns)
+    for lang, phon_file in hparams["phon_files"].items():
+        phon_list = read_label_file(phon_file, "ipa")
+        hparams["phon_encoder"].update_from_iterable(phon_list)
 
     # The phone/word counts are crucial for setting up the architecture correctly
-    logger.info(f"# of (language-dependent) words: {len(hparams['wrd_encoder'].ind2lab)}")
-    logger.info(f"# of (language-dependent) phonemes: {len(hparams['phn_encoder'].ind2lab)}")
-    logger.info(f"# of (language-independent) homologs: {len(hparams['hlg_encoder'].ind2lab)}")
+    logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")
+    logger.info(f"# of (language-independent) phonemes: {len(hparams['phon_encoder'].ind2lab)}")
 
 
 @torch.no_grad()
@@ -158,14 +141,23 @@ def make_datasets(hparams):
     max_crop_len = int(hparams["random_crop_len"] * target_rate) + 1
     df = hparams["downsample_factor"]
 
-    @sb.utils.data_pipeline.takes("lang")
-    @sb.utils.data_pipeline.provides("lang_enc")
-    def lang_pipeline(lang):
-        return hparams["lang_encoder"].encode_label(lang)
+    def grid2array(grid, field, crop_start, crop_len, encoder, postfix):
+        """Convert a list from an alignment grid to an array suitable
+        for use as a target tensor."""
+        array = np.zeros(crop_len, dtype=int)
+        for name, start, stop in convert_to_tuples(grid.getList(field)[0]):
+            start_idx = max(int(start * target_rate) - crop_start, 0)
+            stop_idx = min(int(stop * target_rate) - crop_start, crop_len)
+            if stop_idx > 0 and start_idx < crop_len:
+                encoded = encoder.encode_label_torch(name + postfix).item()
+                array[start_idx:stop_idx] = encoded
+
+        return array
 
     @sb.utils.data_pipeline.takes("wav")
     @sb.utils.data_pipeline.provides("signal", "crop_start")
     def train_audio_pipeline(wav):
+        """Training pipeline returns only a chunk for training efficiency"""
         audio = load_audio_and_resample(wav, hparams["fs"])
 
         # Select random crop of the audio
@@ -181,52 +173,49 @@ def make_datasets(hparams):
     @sb.utils.data_pipeline.takes("wav")
     @sb.utils.data_pipeline.provides("signal", "crop_start")
     def test_audio_pipeline(wav):
+        """Testing pipeline returns full audio starting from 0"""
         audio = load_audio_and_resample(wav, hparams["fs"])
         return audio, 0
 
     @sb.utils.data_pipeline.takes("lang", "wav", "signal", "crop_start")
-    @sb.utils.data_pipeline.provides("wrd_targets", "phn_targets", "hlg_targets")
+    @sb.utils.data_pipeline.provides("phon_targets", "lang_targets", "word_targets")
     def label_pipeline(lang, wav, signal, crop_start):
         """Encode the inputs/targets"""
-
-        def time2rate(time):
-            return int(time * target_rate)
 
         # Create time-aligned target vectors based on alignment info in manifest
         grid_path = pathlib.Path(wav).with_suffix(".TextGrid")
         grid = textgrid.TextGrid.fromFile(grid_path)
         crop_len = len(signal) // df + 1
-        wrd_label_sequence = np.zeros(crop_len, dtype=int)
-        phn_label_sequence = np.zeros(crop_len, dtype=int)
-        hlg_label_sequence = np.zeros(crop_len, dtype=int)
 
-        # Iterate words to create frame-level targets at the specified rate
-        for wrd, start, stop in convert_to_tuples(grid.getList("words")[0]):
-            start_idx = max(time2rate(start) - crop_start, 0)
-            stop_idx = min(time2rate(stop) - crop_start, crop_len)
-            if stop_idx > 0 and start_idx < crop_len:
-                encoded_wrd = hparams["wrd_encoder"].encode_label_torch(wrd + "_" + lang).item()
-                wrd_label_sequence[start_idx:stop_idx] = encoded_wrd
+        # Create label tensors, disambiguating words with a language postfix
+        lang_labels = np.full(crop_len, hparams["lang_encoder"].encode_label(lang), dtype=int)
+        phon_labels = grid2array(
+            grid, "phones", crop_start, crop_len, hparams["phon_encoder"], postfix=""
+        )
+        word_labels = grid2array(
+            grid, "words", crop_start, crop_len, hparams["word_encoder"], postfix=f"_{lang}"
+        )
 
-        # Iterate phonemees to create frame-level targets at the specified rate
-        for phn, start, stop in convert_to_tuples(grid.getList("phones")[0]):
-            start_idx = max(time2rate(start) - crop_start, 0)
-            stop_idx = min(time2rate(stop) - crop_start, crop_len)
-            if stop_idx > 0 and start_idx < crop_len:
-                encoded_phn = hparams["phn_encoder"].encode_label_torch(phn + "_" + lang).item()
-                phn_label_sequence[start_idx:stop_idx] = encoded_phn
-                hlg = hparams[f"phn2hlg_{lang}"][phn]
-                hlg_label_sequence[start_idx:stop_idx] = hparams["hlg_encoder"].encode_label_torch(hlg)
-
-        return wrd_label_sequence, phn_label_sequence, hlg_label_sequence
+        return phon_labels, lang_labels, word_labels
 
     datasets = {}
+    output_keys = ["id", "lang", "signal", "phon_targets", "lang_targets", "word_targets"]
     for stage in ["train", "valid", "test"]:
+        # Load data manually so that we can concatenate before creating our dataset
+        data = {}
+        for lang in hparams["train_languages"]:
+            data.update(json.load(open(hparams[f"{stage}_{lang}_manifest"])))
+
+        # Create dataset from components defined above
         audio_pipeline = train_audio_pipeline if stage == "train" else test_audio_pipeline
-        datasets[stage] = sb.dataio.dataset.DynamicItemDataset.from_json(
-            json_path=hparams[f"{stage}_en_manifest"],
-            dynamic_items=[lang_pipeline, audio_pipeline, label_pipeline],
-            output_keys=["id", "signal", "lang_enc", "wrd_targets", "phn_targets", "hlg_targets"],
-        )#.filtered_sorted(sort_key="frame_count")
+        datasets[stage] = sb.dataio.dataset.DynamicItemDataset(
+            data, [audio_pipeline, label_pipeline], output_keys
+        )
+
+    if len(hparams["train_languages"]) > 1:
+        with datasets["train"].output_keys_as("lang"):
+            weights = [hparams[f"{d['lang']}_weight"] for d in datasets["train"]]
+        hparams["dataloader_options"]["shuffle"] = False
+        hparams["dataloader_options"]["sampler"] = RWRSampler(weights)
     
     return datasets

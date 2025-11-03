@@ -1,5 +1,5 @@
 """
-Speechbrain recipe for training a multilingual phoneme/homolog/word recognition model
+Speechbrain recipe for training a multilingual phonme/homolog/word recognition model
 for investigating the effects of language attrition from lack of exposure.
 
 To run:
@@ -14,44 +14,40 @@ import torch
 import data_sb
 import speechbrain as sb
 from hyperpyyaml import load_hyperpyyaml
+from torch.nn.functional import cross_entropy
 
 logger = sb.utils.logger.get_logger("speechbrain_main.py")
 
 
 class BilingualBrain(sb.Brain):
     def compute_forward(self, batch, stage):
-        """Computes forward pass from wavs to phonemes and wrd"""
+        """Computes forward pass from wavs to phonmes and word"""
         batch.to(self.device)
         signal, lens = batch.signal
         feats = self.hparams.compute_features(signal)
-        return self.modules.model(feats, batch.lang_enc)
+        return self.modules.model(feats)
 
     def compute_objectives(self, predictions, batch, stage):
-        """Computes the loss between predicted and actual wrd and phonemes."""
-        wrd_out, phn_out, hlg_out = predictions
+        """Computes the loss between predicted and actual word and phonmes."""
+        phon_out, lang_out, word_out = predictions
         # Ignore lengths, they should match the predictions by design
-        wrd_targets, _ = batch.wrd_targets
-        phn_targets, _ = batch.phn_targets
-        hlg_targets, _ = batch.hlg_targets
-        wrd_loss = self.compute_loss(predictions=wrd_out, targets=wrd_targets)
-        phn_loss = self.compute_loss(predictions=phn_out, targets=phn_targets)
-        hlg_loss = self.compute_loss(predictions=hlg_out, targets=hlg_targets)
+        phon_targets, _ = batch.phon_targets
+        lang_targets, _ = batch.lang_targets
+        word_targets, _ = batch.word_targets
+
+        # Phones and words ignore empty frames, which have a label of "0"
+        phon_loss = cross_entropy(phon_out.transpose(1, 2), phon_targets, ignore_index=0)
+        word_loss = cross_entropy(word_out.transpose(1, 2), word_targets, ignore_index=0)
+        # But languages are just 0, 1, 2, so we don't ignore "0"
+        lang_loss = cross_entropy(lang_out.transpose(1, 2), lang_targets)
 
         if stage != sb.Stage.TRAIN:
             # Where targets are nonzero, compute accuracy, expects [batch, class, time]
-            self.hparams.word_metric(wrd_out.transpose(1, 2), wrd_targets)
-            self.hparams.phone_metric(phn_out.transpose(1, 2), phn_targets)
-            self.hparams.homolog_metric(hlg_out.transpose(1, 2), hlg_targets)
+            self.hparams.phon_metric(phon_out.transpose(1, 2), phon_targets)
+            self.hparams.lang_metric(lang_out.transpose(1, 2), lang_targets)
+            self.hparams.word_metric(word_out.transpose(1, 2), word_targets)
 
-        return wrd_loss + phn_loss + hlg_loss
-
-    def compute_loss(self, predictions, targets):
-        """Compute cross-entropy loss, ignoring the "silence" and padding index: 0"""
-        # Move time dimension to end for predictions
-        predictions = predictions.transpose(1, 2)
-
-        # Ignore silences and padding
-        return torch.nn.functional.cross_entropy(input=predictions, target=targets, ignore_index=0)
+        return phon_loss + lang_loss + word_loss
 
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
         """Update LR after every batch"""
@@ -64,15 +60,15 @@ class BilingualBrain(sb.Brain):
         if stage != sb.Stage.TRAIN:
             stats={
                 "loss": stage_loss,
-                "wrd_acc": round(self.hparams.word_metric.compute().item(), 3),
-                "phn_acc": round(self.hparams.phone_metric.compute().item(), 3),
-                "hlg_acc": round(self.hparams.homolog_metric.compute().item(), 3),
+                "phon_acc": round(self.hparams.phon_metric.compute().item(), 3),
+                "word_acc": round(self.hparams.word_metric.compute().item(), 3),
+                "lang_acc": round(self.hparams.lang_metric.compute().item(), 3),
             }
 
         if stage == sb.Stage.VALID:
+            self.hparams.phon_metric.reset()
+            self.hparams.lang_metric.reset()
             self.hparams.word_metric.reset()
-            self.hparams.phone_metric.reset()
-            self.hparams.homolog_metric.reset()
 
             self.hparams.train_logger.log_stats(
                 stats_meta={"epoch": epoch},
@@ -112,7 +108,7 @@ if __name__ == "__main__":
 
     # Create trainer
     bilingual_brain = BilingualBrain(
-        modules={k: hparams[k] for k in ["model", "word_metric", "phone_metric", "homolog_metric"]},
+        modules=hparams["modules"],
         opt_class=hparams["opt_class"],
         hparams=hparams,
         run_opts=run_opts,
