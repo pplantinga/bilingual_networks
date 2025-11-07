@@ -39,6 +39,7 @@ def make_manifests(hparams):
                 logger.info(f"Creating {stage} manifest:")
                 make_json(manifest_path, subsets[stage], lang)
 
+
 def make_json(filename, subset, lang):
     """Create one manifest in json form"""
     manifest = {
@@ -55,6 +56,7 @@ def make_json(filename, subset, lang):
     with open(filename, "w", encoding="utf8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 
+
 def make_item(wav, lang):
     """Create a single item of the manifest, to be run in parallel"""
     item = {
@@ -65,20 +67,34 @@ def make_item(wav, lang):
 
     return (wav.stem, item)
 
-translate_table = str.maketrans("ɖ", "d", "ʲʷʰː\u0329\u032A")
+
+translate_table = str.maketrans("", "", "ʲʷʰː\u0329\u032A")
 def clean(mark):
     """Convert to somewhat simplified phoneme set"""
-    return mark.translate(translate_table).replace("m^{me}", "me").replace("kp", "k")
+    return mark.translate(translate_table).replace("m^{me}", "me")
 
 
 def convert_to_tuples(grid):
     """Convert grid to tuple of 'word', 'start', 'end'. """
     return [(clean(i.mark), i.minTime, i.maxTime) for i in grid if i.mark]
 
-def read_label_file(filename, col):
-    """Read file with list of labels."""
-    return pd.read_csv(filename)[col]
 
+def mapping_from_csv(filename, key_col, val_col):
+    """Creates mapping from one column to another"""
+    df = pd.read_csv(filename, usecols=[key_col, val_col])
+    return df.set_index(key_col)[val_col].to_dict()
+
+
+class PhonemeEncoder(sb.dataio.encoder.CategoricalEncoder):
+    """Special encoder to handle converting ipa to homologs"""
+    def __init__(self, ipa2hlg, *args, **kwargs):
+        self.ipa2hlg = ipa2hlg
+        super().__init__(*args, **kwargs)
+
+    def encode_label(self, label, allow_unk=True):
+        """Convert ipa input to hlg before encoding"""
+        hlg = self.ipa2hlg.get(label, "unk")
+        return super().encode_label(hlg, allow_unk)
 
 
 def make_encoders(hparams):
@@ -95,20 +111,21 @@ def make_encoders(hparams):
     # Add words from both languages so we don't have to modify architecture
     # Some words may be spelled the same but we disambiguate with a language tag
     for lang, word_file in hparams["word_files"].items():
-        word_list = read_label_file(word_file, "word")
+        word_list = pd.read_csv(word_file)["word"]
         hparams["word_encoder"].update_from_iterable(word_list + "_" + lang)
+
+    # Iterate language phone files to add all symbols to encoders
+    ipa2hlg = {}
+    for lang, phon_file in hparams["phon_files"].items():
+        ipa2hlg.update(mapping_from_csv(phon_file, "ipa", "homolog"))
 
     # Index 0 is silence in all cases and can be safely ignored.
     # Montreal Forced Aligner uses "spn" as a sort of "unknown speech noise"
     # "spn" and "sil" are mapped to this unk label and ignored
-    hparams["phon_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+    hparams["phon_encoder"] = PhonemeEncoder(ipa2hlg)
     hparams["phon_encoder"].expect_len(hparams["phone_outputs"])
     hparams["phon_encoder"].add_unk()
-
-    # Iterate language phone files to add all symbols to encoders
-    for lang, phon_file in hparams["phon_files"].items():
-        phon_list = read_label_file(phon_file, "ipa")
-        hparams["phon_encoder"].update_from_iterable(phon_list)
+    hparams["phon_encoder"].update_from_iterable(set(ipa2hlg.values()))
 
     # The phone/word counts are crucial for setting up the architecture correctly
     logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")

@@ -89,7 +89,7 @@ lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
 
 #################
 # Model hyperparameters
-phone_outputs: 57
+phone_outputs: 51
 lang_outputs: 2
 word_outputs: 8000
 model: !new:word_phone_model.WordPhoneModel
