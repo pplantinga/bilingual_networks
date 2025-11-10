@@ -3,3 +3,4 @@ data/en/*
 __pycache__
 manifests
 results
+.ipynb_checkpoints
