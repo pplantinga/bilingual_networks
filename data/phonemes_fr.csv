@@ -15,12 +15,12 @@ o,o,vowel,3: vowel,vowel,,,,back,mid,monophthong,
 ø,ø,vowel,3: vowel,vowel,,,,front,mid,monophthong,
 j,j,consonant,2: nasal/approximant,approximant,,postalveolar/palatal,,,,,
 ɛ,ɛ,vowel,3: vowel,vowel,,,,front,mid,monophthong,
-u,UW,vowel,3: vowel,vowel,,,,back,close,monophthong,
+u,u,vowel,3: vowel,vowel,,,,back,close,monophthong,
 ə,ɜ,vowel,3: vowel,vowel,,,,central,mid,monophthong,
 n,n,consonant,2: nasal/approximant,nasal,coronal,dental/alveolar,,,,,
 i,i,vowel,3: vowel,vowel,,,,front,close,monophthong,
 ɑ̃,ɑ̃,vowel,3: vowel,vowel,,,,back,open,nasal,
-y,y,vowel,3: vowel,vowel,,,,front,close,monophthong,
+y,ø,vowel,3: vowel,vowel,,,,front,close,monophthong,
 ɛ̃,ɛ̃,vowel,3: vowel,vowel,,,,front,open,nasal,
 k,k,consonant,1: obstruents,plosive,dorsal,velar/uvular,voiceless,,,,k
 c,k,consonant,1: obstruents,plosive,dorsal,postalveolar/palatal,voiceless,,,,k
@@ -31,7 +31,7 @@ w,w,consonant,2: nasal/approximant,approximant,,velar/uvular,,,,,
 ɟ,g,consonant,1: obstruents,plosive,dorsal,postalveolar/palatal,voiced,,,,k
 ɔ̃,ɔ̃,vowel,3: vowel,vowel,,,,back,mid,nasal,
 z,z,consonant,1: obstruents,fricative,coronal,dental/alveolar,voiced,,,,s
-ɥ,ɥ,consonant,2: nasal/approximant,approximant,,postalveolar/palatal,,,,,
+ɥ,w,consonant,2: nasal/approximant,approximant,,postalveolar/palatal,,,,,
 v,v,consonant,1: obstruents,fricative,labial,labial,voiced,,,,f
 ʃ,ʃ,consonant,1: obstruents,fricative,,postalveolar/palatal,voiceless,,,,ʃ
 tʃ,tʃ,consonant,1: obstruents,affricate,,postalveolar/palatal,voiceless,,,,tʃ

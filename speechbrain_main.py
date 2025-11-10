@@ -46,6 +46,7 @@ class BilingualBrain(sb.Brain):
             self.hparams.phon_metric(phon_out.transpose(1, 2), phon_targets)
             self.hparams.lang_metric(lang_out.transpose(1, 2), lang_targets)
             self.hparams.word_metric(word_out.transpose(1, 2), word_targets)
+            self.hparams.phon_confusion(phon_out.transpose(1, 2), phon_targets)
 
         return phon_loss + lang_loss + word_loss
 
@@ -58,6 +59,7 @@ class BilingualBrain(sb.Brain):
         """Compute metrics and save progress"""
 
         if stage != sb.Stage.TRAIN:
+            confusions = self.hparams.phon_confusion.compute().cpu()
             stats={
                 "loss": stage_loss,
                 "phon_acc": round(self.hparams.phon_metric.compute().item(), 3),
@@ -66,9 +68,11 @@ class BilingualBrain(sb.Brain):
             }
 
         if stage == sb.Stage.VALID:
+            torch.save(confusions, self.hparams.confusions_valid)
             self.hparams.phon_metric.reset()
             self.hparams.lang_metric.reset()
             self.hparams.word_metric.reset()
+            self.hparams.phon_confusion.reset()
 
             self.hparams.train_logger.log_stats(
                 stats_meta={"epoch": epoch},
@@ -77,6 +81,7 @@ class BilingualBrain(sb.Brain):
             self.checkpointer.save_and_keep_only()
 
         elif stage == sb.Stage.TEST:
+            torch.save(confusions, self.hparams.confusions_test)
             self.hparams.train_logger.log_stats(
                 stats_meta={"Epoch loaded": self.hparams.epoch_counter.current},
                 test_stats=stats,

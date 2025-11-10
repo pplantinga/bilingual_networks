@@ -17,6 +17,8 @@ data_folder: data
 output_folder: !ref results/bilingual_<seed>
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
+confusions_valid: !ref <output_folder>/confusions_valid.txt
+confusions_test: !ref <output_folder>/confusions_test.txt
 pretrained_path: !PLACEHOLDER
 train_fr_manifest: manifests/train_fr.json
 valid_fr_manifest: manifests/valid_fr.json
@@ -114,18 +116,19 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_bidirectional: False
   rnn_dropout: 0.2
 
-phon_metric: !new:torchmetrics.classification.Accuracy
-  task: multiclass
+phon_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
   ignore_index: 0
 
-lang_metric: !new:torchmetrics.classification.Accuracy
-  task: multiclass
+lang_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <lang_outputs>
 
-word_metric: !new:torchmetrics.classification.Accuracy
-  task: multiclass
+word_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <word_outputs>
+  ignore_index: 0
+
+phon_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
+  num_classes: !ref <phone_outputs>
   ignore_index: 0
 
 modules:
@@ -133,6 +136,7 @@ modules:
   phon_metric: !ref <phon_metric>
   lang_metric: !ref <lang_metric>
   word_metric: !ref <word_metric>
+  phon_confusion: !ref <phon_confusion>
 
 pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
   loadables:
