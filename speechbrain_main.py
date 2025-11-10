@@ -101,6 +101,11 @@ if __name__ == "__main__":
         overrides=overrides,
     )
 
+    # Load pretrained weights if available
+    if "pretrainer" in hparams:
+        hparams["pretrainer"].collect_files()
+        hparams["pretrainer"].load_collected()
+
     # Manifests will only be made once, encoders and datasets every time
     data_sb.make_manifests(hparams)
     data_sb.make_encoders(hparams)

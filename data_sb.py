@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import soundfile as sf
 import speechbrain as sb
-from speechbrain.dataio.sampler import ReproducibleWeightedRandomSampler as RWRSampler
+from speechbrain.dataio.sampler import ReproducibleWeightedRandomSampler
 
 logger = sb.utils.logger.get_logger("speechbrain_data.py")
 
@@ -229,10 +229,17 @@ def make_datasets(hparams):
             data, [audio_pipeline, label_pipeline], output_keys
         )
 
+    # Enable random sampling if we're doing multilingual training
     if len(hparams["train_languages"]) > 1:
-        with datasets["train"].output_keys_as("lang"):
+        with datasets["train"].output_keys_as(["lang"]):
             weights = [hparams[f"{d['lang']}_weight"] for d in datasets["train"]]
+
+        # Disable shuffle cuz sampler manages this
         hparams["dataloader_options"]["shuffle"] = False
-        hparams["dataloader_options"]["sampler"] = RWRSampler(weights)
+        hparams["dataloader_options"]["sampler"] = ReproducibleWeightedRandomSampler(
+            weights=weights,
+            num_samples=len(datasets["train"]) // len(hparams["train_languages"]),
+            replacement=False,
+        )
     
     return datasets

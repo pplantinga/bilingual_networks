@@ -14,14 +14,18 @@ __set_seed: !apply:torch.manual_seed [!ref <seed>]
 #######################
 # Data and storage hyperparameters
 data_folder: data
-output_folder: !ref results/<seed>
+output_folder: !ref results/bilingual_<seed>
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
+pretrained_path: !PLACEHOLDER
+train_fr_manifest: manifests/train_fr.json
+valid_fr_manifest: manifests/valid_fr.json
+test_fr_manifest: manifests/test_fr.json
 train_en_manifest: manifests/train_en.json
 valid_en_manifest: manifests/valid_en.json
 test_en_manifest: manifests/test_en.json
 supported_languages: ["fr", "en"]
-train_languages: ["en"]
+train_languages: ["fr", "en"]
 word_files:
   fr: data/words_fr.csv
   en: data/words_en.csv
@@ -29,6 +33,8 @@ phon_files:
   fr: data/phonemes_fr.csv
   en: data/phonemes_en.csv
 test_portion: 0.05
+fr_weight: 0.05
+en_weight: 0.95
 
 train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
     save_file: !ref <train_log>
@@ -61,7 +67,7 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 # Training hyperparameters
 lr: 0.002
 batch_size: 64
-num_epochs: 50
+num_epochs: 15
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
@@ -127,3 +133,9 @@ modules:
   phon_metric: !ref <phon_metric>
   lang_metric: !ref <lang_metric>
   word_metric: !ref <word_metric>
+
+pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
+  loadables:
+    model: !ref <model>
+  paths:
+    model: !ref <pretrained_path>/model.ckpt
