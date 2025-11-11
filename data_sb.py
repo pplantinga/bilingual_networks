@@ -125,7 +125,7 @@ def make_encoders(hparams):
     hparams["phon_encoder"] = PhonemeEncoder(ipa2hlg)
     hparams["phon_encoder"].expect_len(hparams["phone_outputs"])
     hparams["phon_encoder"].add_unk()
-    hparams["phon_encoder"].update_from_iterable(set(ipa2hlg.values()))
+    hparams["phon_encoder"].update_from_iterable(sorted(set(ipa2hlg.values())))
 
     # The phone/word counts are crucial for setting up the architecture correctly
     logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")
@@ -228,6 +228,12 @@ def make_datasets(hparams):
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset(
             data, [audio_pipeline, label_pipeline], output_keys
         )
+
+        if stage in ["valid", "test"]:
+            datasets[stage] = datasets[stage].filtered_sorted(
+                key_max_value={"duration": 10.0},
+                sort_key="duration",
+            )
 
     # Enable random sampling if we're doing multilingual training
     if len(hparams["train_languages"]) > 1:
