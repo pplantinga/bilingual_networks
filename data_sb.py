@@ -232,6 +232,7 @@ def make_datasets(hparams):
         if stage in ["valid", "test"]:
             datasets[stage] = datasets[stage].filtered_sorted(
                 key_max_value={"duration": 10.0},
+                #key_test={"lang": lambda x: x == "en"},
                 sort_key="duration",
             )
 

@@ -118,13 +118,16 @@ model: !new:word_phone_model.WordPhoneModel
 
 phon_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
+  average: micro
   ignore_index: 0
 
 lang_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <lang_outputs>
+  average: micro
 
 word_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <word_outputs>
+  average: micro
   ignore_index: 0
 
 phon_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
