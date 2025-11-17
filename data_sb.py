@@ -92,9 +92,10 @@ class PhonemeEncoder(sb.dataio.encoder.CategoricalEncoder):
         super().__init__(*args, **kwargs)
 
     def encode_label(self, label, allow_unk=True):
-        """Convert ipa input to hlg before encoding"""
-        hlg = self.ipa2hlg.get(label, "unk")
-        return super().encode_label(hlg, allow_unk)
+        """Convert ipa input to language-independent version before encoding"""
+        if label in self.ipa2hlg:
+            label = self.ipa2hlg[label]
+        return super().encode_label(label, allow_unk)
 
 
 def make_encoders(hparams):

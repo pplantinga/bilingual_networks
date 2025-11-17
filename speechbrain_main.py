@@ -48,6 +48,14 @@ class BilingualBrain(sb.Brain):
             self.hparams.word_metric(word_out.transpose(1, 2), word_targets)
             self.hparams.phon_confusion(phon_out.transpose(1, 2), phon_targets)
 
+            if stage == sb.Stage.TEST:
+                for row, lang in zip(phon_targets, batch.lang):
+                    instance_counts = row.unique_consecutive().bincount(minlength=51)
+                    if lang == "fr":
+                        self.instance_counts_fr += instance_counts
+                    elif lang == "en":
+                        self.instance_counts_en += instance_counts
+
         return phon_loss + lang_loss + word_loss
 
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
@@ -125,6 +133,9 @@ if __name__ == "__main__":
         checkpointer=hparams["checkpointer"],
     )
 
+    bilingual_brain.instance_counts_fr = torch.zeros(51, device="cuda", dtype=int)
+    bilingual_brain.instance_counts_en = torch.zeros(51, device="cuda", dtype=int)
+
     # Training/validation loop
     bilingual_brain.fit(
         bilingual_brain.hparams.epoch_counter,
@@ -139,3 +150,13 @@ if __name__ == "__main__":
         datasets["test"],
         test_loader_kwargs=hparams["test_loader_options"],
     )
+
+    print("Instance counts FR:")
+    instance_sum_fr = bilingual_brain.instance_counts_fr[1:].sum()
+    for phoneme, count in zip(bilingual_brain.hparams.phon_encoder.lab2ind, bilingual_brain.instance_counts_fr):
+        print(phoneme, "-", count.cpu().numpy(), f"- {count / instance_sum_fr:.2%}")
+
+    print("Instance counts EN:")
+    instance_sum_en = bilingual_brain.instance_counts_en[1:].sum()
+    for phoneme, count in zip(bilingual_brain.hparams.phon_encoder.lab2ind, bilingual_brain.instance_counts_en):
+        print(phoneme, "-", count.cpu().numpy(), f"- {count / instance_sum_en:.2%}")
