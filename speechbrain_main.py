@@ -36,7 +36,9 @@ class BilingualBrain(sb.Brain):
         word_targets, _ = batch.word_targets
 
         # Phones and words ignore empty frames, which have a label of "0"
-        phon_loss = cross_entropy(phon_out.transpose(1, 2), phon_targets, ignore_index=0)
+        phon_loss = 0
+        if self.hparams.phone_feedback:
+            phon_loss = cross_entropy(phon_out.transpose(1, 2), phon_targets, ignore_index=0)
         word_loss = cross_entropy(word_out.transpose(1, 2), word_targets, ignore_index=0)
         # But languages are just 0, 1, 2, so we don't ignore "0"
         lang_loss = cross_entropy(lang_out.transpose(1, 2), lang_targets)

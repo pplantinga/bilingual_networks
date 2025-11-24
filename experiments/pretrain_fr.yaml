@@ -8,7 +8,7 @@
 # Based on recipe by:
 #  * Loren Lugosch (2023?)
 # etc.
-seed: 12346
+seed: 12347
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 #######################
@@ -67,6 +67,7 @@ num_epochs: 20
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
+phone_feedback: False
 
 # For some weird reason this seems to cause memory leaks
 #precision: bf16
