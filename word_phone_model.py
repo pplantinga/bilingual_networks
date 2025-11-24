@@ -21,14 +21,16 @@ class WordPhoneModel(nn.Module):
 
     Arguments
     ---------
+    phone_outputs : int
+        Size of the phoneme output layer.
     lang_outputs : int
         Number of languages in the lang detection output.
     word_outputs : int
         Size of the word output layer.
-    phone_outputs : int
-        Size of the phoneme output layer.
     input_size : int
         The length of the expected input at the third dimension.
+    phone_bottleneck : bool
+        Whether to insert the phone layer between RNNs.
     activation : torch.nn.Module class
         A class used for constructing the activation layers for CNN.
     cnn_blocks : int
@@ -80,6 +82,10 @@ class WordPhoneModel(nn.Module):
         rnn_neurons=256,
         rnn_dropout=0.2,
         rnn_bidirectional=False,
+        phone_bottleneck=False,
+        bottleneck_temperature=2.0,
+        bottleneck_temperature_step=0.001,
+        bottleneck_temperature_min=0.2,
     ):
         super().__init__()
 
@@ -115,10 +121,17 @@ class WordPhoneModel(nn.Module):
         # Intermediate outputs
         self.phone_out = nn.Linear(rnn_neurons, phone_outputs)
         self.lang_out = nn.Linear(rnn_neurons, lang_outputs)
+
+        # Settings for bottleneck
+        self.phone_bottleneck = phone_bottleneck
+        self.temp = bottleneck_temperature
+        self.temp_step = bottleneck_temperature_step
+        self.temp_min = bottleneck_temperature_min
         
         # Second level RNN (word level)
+        word_input = phone_outputs if phone_bottleneck else rnn_neurons
         self.word_rnn = rnn_class(
-            input_size=rnn_neurons,
+            input_size=word_input,
             hidden_size=rnn_neurons,
             num_layers=rnn_layers,
             dropout=rnn_dropout if rnn_layers > 1 else 0,
@@ -128,6 +141,10 @@ class WordPhoneModel(nn.Module):
 
         # Final output
         self.word_out = nn.Linear(rnn_neurons, word_outputs)
+
+    def step_bottleneck_temp(self):
+        """Reduce temperature by one step"""
+        self.temp = max(self.temp_min, self.temp - self.temp_step)
 
     def forward(self, mel_spectrogram):
         """Forward pass through the model.
@@ -157,11 +174,13 @@ class WordPhoneModel(nn.Module):
         phone_rnn_out, _ = self.phone_rnn(cnn_out)
         phone_rnn_out = self.dropout(phone_rnn_out)
 
-        # Phone predictions
-        phone_out = self.phone_out(phone_rnn_out)
-
         # Language predictions
         lang_out = self.lang_out(phone_rnn_out)
+
+        # Phone predictions
+        phone_out = self.phone_out(phone_rnn_out)
+        if self.phone_bottleneck:
+            phone_rnn_out = torch.softmax(phone_out / self.temp, dim=-1)
 
         # Word-level RNN
         word_rnn_out, _ = self.word_rnn(phone_rnn_out)
