@@ -8,7 +8,7 @@
 # Based on recipe by:
 #  * Loren Lugosch (2023?)
 # etc.
-seed: 12345
+seed: 12346
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 #######################
@@ -99,6 +99,10 @@ lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
 phone_outputs: 49
 lang_outputs: 2
 word_outputs: 8000
+temp: 2.0
+min_temp: 0.2
+t_range: !ref <temp> - <min_temp>
+t_step: !ref <t_range> / 80000  # spread over roughly 10 epochs
 model: !new:word_phone_model.WordPhoneModel
   input_size: !ref <n_mels>
   phone_outputs: !ref <phone_outputs>
@@ -109,6 +113,10 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_layers: 1
   rnn_bidirectional: False
   rnn_dropout: 0.2
+  phone_bottleneck: True
+  bottleneck_temperature: !ref <temp>
+  bottleneck_temperature_step: !ref <t_step>
+  bottleneck_temperature_min: !ref <min_temp>
 
 phon_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>

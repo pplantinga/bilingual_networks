@@ -62,6 +62,8 @@ class BilingualBrain(sb.Brain):
         """Update LR after every batch"""
         if should_step:
             self.hparams.lr_annealing(self.optimizer)
+            if self.modules.model.phone_bottleneck:
+                self.modules.model.step_bottleneck_temp()
 
     def on_stage_end(self, stage, stage_loss, epoch=None):
         """Compute metrics and save progress"""
