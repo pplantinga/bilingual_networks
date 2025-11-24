@@ -59,11 +59,9 @@ def make_json(filename, subset, lang):
 
 def make_item(wav, lang):
     """Create a single item of the manifest, to be run in parallel"""
-    item = {
-        "wav": str(wav),
-        "lang": lang,
-        "frame_count": torchaudio.info(wav).num_frames,
-    }
+    info = torchaudio.info(wav)
+    dur = round(info.num_frames / info.sample_rate, 2)
+    item = {"path": f"{lang}/{wav.stem}", "lang": lang, "duration": dur}
 
     return (wav.stem, item)
 
@@ -172,6 +170,13 @@ def make_datasets(hparams):
 
         return array
 
+    @sb.utils.data_pipeline.takes("path")
+    @sb.utils.data_pipeline.provides("wav", "grid")
+    def path_pipeline(path):
+        """Create full path to files"""
+        base = hparams["data_folder"] / pathlib.Path(path)
+        return base.with_suffix(".mp3"), base.with_suffix(".TextGrid")
+
     @sb.utils.data_pipeline.takes("wav")
     @sb.utils.data_pipeline.provides("signal", "crop_start")
     def train_audio_pipeline(wav):
@@ -195,14 +200,11 @@ def make_datasets(hparams):
         audio = load_audio_and_resample(wav, hparams["fs"])
         return audio, 0
 
-    @sb.utils.data_pipeline.takes("lang", "wav", "signal", "crop_start")
+    @sb.utils.data_pipeline.takes("lang", "grid", "signal", "crop_start")
     @sb.utils.data_pipeline.provides("phon_targets", "lang_targets", "word_targets")
-    def label_pipeline(lang, wav, signal, crop_start):
-        """Encode the inputs/targets"""
-
-        # Create time-aligned target vectors based on alignment info in manifest
-        grid_path = pathlib.Path(wav).with_suffix(".TextGrid")
-        grid = textgrid.TextGrid.fromFile(grid_path)
+    def label_pipeline(lang, grid, signal, crop_start):
+        """Create time-aligned target vectors based on alignment info in manifest"""
+        grid = textgrid.TextGrid.fromFile(grid)
         crop_len = len(signal) // df + 1
 
         # Create label tensors, disambiguating words with a language postfix
@@ -227,7 +229,7 @@ def make_datasets(hparams):
         # Create dataset from components defined above
         audio_pipeline = train_audio_pipeline if stage == "train" else test_audio_pipeline
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset(
-            data, [audio_pipeline, label_pipeline], output_keys
+            data, [path_pipeline, audio_pipeline, label_pipeline], output_keys
         )
 
         if stage in ["valid", "test"]:
