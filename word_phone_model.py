@@ -29,8 +29,6 @@ class WordPhoneModel(nn.Module):
         Size of the word output layer.
     input_size : int
         The length of the expected input at the third dimension.
-    phone_bottleneck : bool
-        Whether to insert the phone layer between RNNs.
     activation : torch.nn.Module class
         A class used for constructing the activation layers for CNN.
     cnn_blocks : int
@@ -49,6 +47,20 @@ class WordPhoneModel(nn.Module):
         Dropout rate for RNN and linear layers.
     rnn_bidirectional : bool
         Whether to use bidirectional RNN for phone layer.
+    phone_bottleneck : bool
+        Whether to insert the phone layer between RNNs.
+    phone_softmax : bool
+        Whether to add a softmax to force a single phoneme selection per step.
+        Does nothing unless `phone_bottleneck` is also `True`.
+    phone_softmax_temp : float
+        Starting temperature for softmax (before decay), usually > 1.0
+        Default 2.0
+    phone_softmax_temp_step : float
+        Decay rate for softmax, loses this much temp per step.
+        Default 0.001
+    phone_softmax_temp_min : float
+        Ending value for softmax after decay is complete, usually < 1.0
+        Default 0.2
 
     Example
     -------
@@ -83,9 +95,10 @@ class WordPhoneModel(nn.Module):
         rnn_dropout=0.2,
         rnn_bidirectional=False,
         phone_bottleneck=False,
-        bottleneck_temperature=2.0,
-        bottleneck_temperature_step=0.001,
-        bottleneck_temperature_min=0.2,
+        phone_softmax=False,
+        phone_softmax_temp=2.0,
+        phone_softmax_temp_step=0.001,
+        phone_softmax_temp_min=0.2,
     ):
         super().__init__()
 
@@ -124,9 +137,10 @@ class WordPhoneModel(nn.Module):
 
         # Settings for bottleneck
         self.phone_bottleneck = phone_bottleneck
-        self.temp = bottleneck_temperature
-        self.temp_step = bottleneck_temperature_step
-        self.temp_min = bottleneck_temperature_min
+        self.phone_softmax = phone_softmax
+        self.temp = phone_softmax_temp
+        self.temp_step = phone_softmax_temp_step
+        self.temp_min = phone_softmax_temp_min
         
         # Second level RNN (word level)
         word_input = phone_outputs if phone_bottleneck else rnn_neurons
@@ -143,7 +157,7 @@ class WordPhoneModel(nn.Module):
         self.word_out = nn.Linear(rnn_neurons, word_outputs)
 
     def step_bottleneck_temp(self):
-        """Reduce temperature by one step"""
+        """Reduce temperature by one step, until min is reached"""
         self.temp = max(self.temp_min, self.temp - self.temp_step)
 
     def forward(self, mel_spectrogram):
@@ -179,8 +193,12 @@ class WordPhoneModel(nn.Module):
 
         # Phone predictions
         phone_out = self.phone_out(phone_rnn_out)
+
+        # Prepare bottleneck inputs to word rnn
         if self.phone_bottleneck:
-            phone_rnn_out = torch.softmax(phone_out / self.temp, dim=-1)
+            phone_rnn_out = phone_out
+            if self.phone_softmax:
+                phone_rnn_out = torch.softmax(phone_rnn_out / self.temp, dim=-1)
 
         # Word-level RNN
         word_rnn_out, _ = self.word_rnn(phone_rnn_out)

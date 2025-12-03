@@ -112,23 +112,22 @@ def make_encoders(hparams):
     for lang, word_file in hparams["word_files"].items():
         word_list = pd.read_csv(word_file)["word"]
         hparams["word_encoder"].update_from_iterable(word_list + "_" + lang)
+    logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")
 
     # Iterate language phone files to add all symbols to encoders
-    ipa2hlg = {}
-    for lang, phon_file in hparams["phon_files"].items():
-        ipa2hlg.update(mapping_from_csv(phon_file, "ipa", "homolog"))
+    if hparams["phone_feedback"]:
+        ipa2hlg = {}
+        for lang, phon_file in hparams["phon_files"].items():
+            ipa2hlg.update(mapping_from_csv(phon_file, "ipa", "homolog"))
 
-    # Index 0 is silence in all cases and can be safely ignored.
-    # Montreal Forced Aligner uses "spn" as a sort of "unknown speech noise"
-    # "spn" and "sil" are mapped to this unk label and ignored
-    hparams["phon_encoder"] = PhonemeEncoder(ipa2hlg)
-    hparams["phon_encoder"].expect_len(hparams["phone_outputs"])
-    hparams["phon_encoder"].add_unk()
-    hparams["phon_encoder"].update_from_iterable(sorted(set(ipa2hlg.values())))
-
-    # The phone/word counts are crucial for setting up the architecture correctly
-    logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")
-    logger.info(f"# of (language-independent) phonemes: {len(hparams['phon_encoder'].ind2lab)}")
+        # Index 0 is silence in all cases and can be safely ignored.
+        # Montreal Forced Aligner uses "spn" as a sort of "unknown speech noise"
+        # "spn" and "sil" are mapped to this unk label and ignored
+        hparams["phon_encoder"] = PhonemeEncoder(ipa2hlg)
+        hparams["phon_encoder"].expect_len(hparams["phone_outputs"])
+        hparams["phon_encoder"].add_unk()
+        hparams["phon_encoder"].update_from_iterable(sorted(set(ipa2hlg.values())))
+        logger.info(f"# of (language-independent) phonemes: {len(hparams['phon_encoder'].ind2lab)}")
 
 
 @torch.no_grad()
@@ -171,17 +170,17 @@ def make_datasets(hparams):
         return array
 
     @sb.utils.data_pipeline.takes("path")
-    @sb.utils.data_pipeline.provides("wav", "grid")
+    @sb.utils.data_pipeline.provides("wav_path", "grid_path")
     def path_pipeline(path):
         """Create full path to files"""
         base = hparams["data_folder"] / pathlib.Path(path)
         return base.with_suffix(".mp3"), base.with_suffix(".TextGrid")
 
-    @sb.utils.data_pipeline.takes("wav")
-    @sb.utils.data_pipeline.provides("signal", "crop_start")
-    def train_audio_pipeline(wav):
+    @sb.utils.data_pipeline.takes("wav_path")
+    @sb.utils.data_pipeline.provides("signal", "crop_start", "crop_len")
+    def train_audio_pipeline(wav_path):
         """Training pipeline returns only a chunk for training efficiency"""
-        audio = load_audio_and_resample(wav, hparams["fs"])
+        audio = load_audio_and_resample(wav_path, hparams["fs"])
 
         # Select random crop of the audio
         max_start = max(1, len(audio) // df - max_crop_len)
@@ -190,36 +189,53 @@ def make_datasets(hparams):
         signal = audio[crop_start * df:crop_end * df].copy()
         del audio
 
-        # Return starting time so labels can be aligned
-        return signal, crop_start
-
-    @sb.utils.data_pipeline.takes("wav")
-    @sb.utils.data_pipeline.provides("signal", "crop_start")
-    def test_audio_pipeline(wav):
-        """Testing pipeline returns full audio starting from 0"""
-        audio = load_audio_and_resample(wav, hparams["fs"])
-        return audio, 0
-
-    @sb.utils.data_pipeline.takes("lang", "grid", "signal", "crop_start")
-    @sb.utils.data_pipeline.provides("phon_targets", "lang_targets", "word_targets")
-    def label_pipeline(lang, grid, signal, crop_start):
-        """Create time-aligned target vectors based on alignment info in manifest"""
-        grid = textgrid.TextGrid.fromFile(grid)
+        # Return starting time and len so labels can be aligned
         crop_len = len(signal) // df + 1
+        return signal, crop_start, crop_len
 
-        # Create label tensors, disambiguating words with a language postfix
-        lang_labels = np.full(crop_len, hparams["lang_encoder"].encode_label(lang), dtype=int)
-        phon_labels = grid2array(
+    @sb.utils.data_pipeline.takes("wav_path")
+    @sb.utils.data_pipeline.provides("signal", "crop_start", "crop_len")
+    def test_audio_pipeline(wav_path):
+        """Testing pipeline returns full audio starting from 0."""
+        audio = load_audio_and_resample(wav_path, hparams["fs"])
+        crop_len = len(audio) // df + 1
+        return audio, 0, crop_len
+
+    @sb.utils.data_pipeline.takes("grid_path")
+    @sb.utils.data_pipeline.provides("grid")
+    def grid_pipeline(grid_path):
+        """Load grid from file."""
+        return textgrid.TextGrid.fromFile(grid_path)
+
+    @sb.utils.data_pipeline.takes("grid", "crop_start", "crop_len")
+    @sb.utils.data_pipeline.provides("phon_targets")
+    def phon_pipeline(grid, crop_start, crop_len):
+        """Create time-aligned phoneme targets based on textgrid."""
+        return grid2array(
             grid, "phones", crop_start, crop_len, hparams["phon_encoder"], postfix=""
         )
-        word_labels = grid2array(
+
+    @sb.utils.data_pipeline.takes("crop_len", "lang")
+    @sb.utils.data_pipeline.provides("lang_targets")
+    def lang_pipeline(crop_len, lang):
+        """Create language targets with the same length as the audio."""
+        return np.full(crop_len, hparams["lang_encoder"].encode_label(lang), dtype=int)
+
+    @sb.utils.data_pipeline.takes("lang", "grid", "crop_start", "crop_len")
+    @sb.utils.data_pipeline.provides("word_targets")
+    def word_pipeline(lang, grid, crop_start, crop_len):
+        """Create time-aligned language-disambiguated word targets based on textgrid."""
+        return grid2array(
             grid, "words", crop_start, crop_len, hparams["word_encoder"], postfix=f"_{lang}"
         )
 
-        return phon_labels, lang_labels, word_labels
+    pipelines = [path_pipeline, grid_pipeline, lang_pipeline, word_pipeline]
+    output_keys = ["id", "lang", "signal", "lang_targets", "word_targets"]
+    if hparams["phone_feedback"]:
+        pipelines.append(phon_pipeline)
+        output_keys.append("phon_targets")
 
     datasets = {}
-    output_keys = ["id", "lang", "signal", "phon_targets", "lang_targets", "word_targets"]
     for stage in ["train", "valid", "test"]:
         # Load data manually so that we can concatenate before creating our dataset
         data = {}
@@ -229,10 +245,11 @@ def make_datasets(hparams):
         # Create dataset from components defined above
         audio_pipeline = train_audio_pipeline if stage == "train" else test_audio_pipeline
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset(
-            data, [path_pipeline, audio_pipeline, label_pipeline], output_keys
+            data, pipelines + [audio_pipeline], output_keys
         )
 
         if stage in ["valid", "test"]:
+            # Long utterances cause OOM on validation, limit max length
             datasets[stage] = datasets[stage].filtered_sorted(
                 key_max_value={"duration": 10.0},
                 #key_test={"lang": lambda x: x == "en"},
@@ -251,5 +268,5 @@ def make_datasets(hparams):
             num_samples=len(datasets["train"]) // len(hparams["train_languages"]),
             replacement=False,
         )
-    
+
     return datasets

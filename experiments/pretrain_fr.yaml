@@ -8,7 +8,7 @@
 # Based on recipe by:
 #  * Loren Lugosch (2023?)
 # etc.
-seed: 12347
+seed: 12348
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 #######################
@@ -114,10 +114,11 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_layers: 1
   rnn_bidirectional: False
   rnn_dropout: 0.2
-  phone_bottleneck: True
-  bottleneck_temperature: !ref <temp>
-  bottleneck_temperature_step: !ref <t_step>
-  bottleneck_temperature_min: !ref <min_temp>
+  phone_bottleneck: False
+  phone_softmax: False
+  phone_softmax_temp: !ref <temp>
+  phone_softmax_temp_step: !ref <t_step>
+  phone_softmax_temp_min: !ref <min_temp>
 
 phon_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
