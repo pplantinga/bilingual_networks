@@ -14,29 +14,25 @@ __set_seed: !apply:torch.manual_seed [!ref <seed>]
 #######################
 # Data and storage hyperparameters
 data_folder: data
-output_folder: !ref results/bilingual_<seed>
+output_folder: !ref results/<seed>
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
 confusions_valid: !ref <output_folder>/confusions_valid.txt
 confusions_test: !ref <output_folder>/confusions_test.txt
-pretrained_path: !PLACEHOLDER
-train_fr_manifest: manifests/train_fr.json
-valid_fr_manifest: manifests/valid_fr.json
-test_fr_manifest: manifests/test_fr.json
-train_en_manifest: manifests/train_en.json
-valid_en_manifest: manifests/valid_en.json
-test_en_manifest: manifests/test_en.json
-supported_languages: ["fr", "en"]
-train_languages: ["fr", "en"]
+train_de_manifest: manifests/train_de.json
+valid_de_manifest: manifests/valid_de.json
+test_de_manifest: manifests/test_de.json
+supported_languages: ["fr", "en", "de"]
+train_languages: ["de"]
 word_files:
   fr: data/words_fr.csv
   en: data/words_en.csv
+  de: data/words_de.csv
 phon_files:
   fr: data/phonemes_fr.csv
   en: data/phonemes_en.csv
+  de: data/phonemes_de.csv
 test_portion: 0.05
-fr_weight: 0.99
-en_weight: 0.1
 
 train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
     save_file: !ref <train_log>
@@ -73,7 +69,7 @@ num_epochs: 20
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
-phone_feedback: True
+phone_feedback: False
 
 # For some weird reason this seems to cause memory leaks
 #precision: bf16
@@ -103,9 +99,9 @@ lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
 
 #################
 # Model hyperparameters
-phone_outputs: 49
-lang_outputs: 2
-word_outputs: 8000
+phone_outputs: 51
+lang_outputs: 3
+word_outputs: 11998
 temp: 2.0
 min_temp: 0.2
 t_range: !ref <temp> - <min_temp>
@@ -121,9 +117,10 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_bidirectional: False
   rnn_dropout: 0.2
   phone_bottleneck: False
-  #bottleneck_temperature: !ref <temp>
-  #bottleneck_temperature_step: !ref <t_step>
-  #bottleneck_temperature_min: !ref <min_temp>
+  phone_softmax: False
+  phone_softmax_temp: !ref <temp>
+  phone_softmax_temp_step: !ref <t_step>
+  phone_softmax_temp_min: !ref <min_temp>
 
 phon_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
@@ -149,9 +146,3 @@ modules:
   lang_metric: !ref <lang_metric>
   word_metric: !ref <word_metric>
   phon_confusion: !ref <phon_confusion>
-
-pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
-  loadables:
-    model: !ref <model>
-  paths:
-    model: !ref <pretrained_path>/model.ckpt
