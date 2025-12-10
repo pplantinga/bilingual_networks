@@ -14,17 +14,14 @@ class WordPhoneModel(nn.Module):
     both word and phoneme probabilities. 
 
     This model expects 3-dimensional input [batch, time, feats] and
-    produces three outputs with sizes:
+    produces two outputs with sizes:
      * [batch, time, phone_outputs]
-     * [batch, time, lang_outputs]
      * [batch, time, word_outputs]
 
     Arguments
     ---------
     phone_outputs : int
         Size of the phoneme output layer.
-    lang_outputs : int
-        Number of languages in the lang detection output.
     word_outputs : int
         Size of the word output layer.
     input_size : int
@@ -66,13 +63,11 @@ class WordPhoneModel(nn.Module):
     -------
     >>> inputs = torch.rand([10, 15, 60])
     >>> model = WordPhoneModel(
-    ...   phone_outputs=50, lang_outputs=3, word_outputs=100, input_size=inputs.size(-1)
+    ...   phone_outputs=50, word_outputs=100, input_size=inputs.size(-1)
     ... )
-    >>> phone_out, lang_out, word_out = model(inputs, torch.zeros(10, dtype=torch.long))
+    >>> phone_out, word_out = model(inputs)
     >>> phone_out.shape
     torch.Size([10, 15, 50])
-    >>> lang_out.shape
-    torch.Size([10, 15, 3])
     >>> word_out.shape
     torch.Size([10, 15, 100])
     """
@@ -80,15 +75,12 @@ class WordPhoneModel(nn.Module):
     def __init__(
         self,
         phone_outputs,
-        lang_outputs,
         word_outputs,
         input_size,
         activation=nn.LeakyReLU,
         cnn_blocks=3,
         cnn_channels=128,
         cnn_kernelsize=3,
-        lang_embedding_size=5,
-        chance_lang_unknown=0.5,
         rnn_class=nn.GRU,
         rnn_layers=1,
         rnn_neurons=256,
@@ -133,7 +125,6 @@ class WordPhoneModel(nn.Module):
 
         # Intermediate outputs
         self.phone_out = nn.Linear(rnn_neurons, phone_outputs)
-        self.lang_out = nn.Linear(rnn_neurons, lang_outputs)
 
         # Settings for bottleneck
         self.phone_bottleneck = phone_bottleneck
@@ -170,8 +161,6 @@ class WordPhoneModel(nn.Module):
 
         Returns
         -------
-        lang_out : torch.FloatTensor
-            Language predictions [batch, time, lang_outputs]
         phone_out : torch.FloatTensor
             Phone predictions [batch, time, phone_outputs]
         word_out : torch.FloatTensor
@@ -187,9 +176,6 @@ class WordPhoneModel(nn.Module):
         # Phone-level RNN
         phone_rnn_out, _ = self.phone_rnn(cnn_out)
         phone_rnn_out = self.dropout(phone_rnn_out)
-
-        # Language predictions
-        lang_out = self.lang_out(phone_rnn_out)
 
         # Phone predictions
         phone_out = self.phone_out(phone_rnn_out)
@@ -207,4 +193,4 @@ class WordPhoneModel(nn.Module):
         # Word predictions
         word_out = self.word_out(word_rnn_out)
 
-        return phone_out, lang_out, word_out
+        return phone_out, word_out

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import soundfile as sf
 import speechbrain as sb
+from speechbrain.utils.data_pipeline import takes, provides
 from speechbrain.dataio.sampler import ReproducibleWeightedRandomSampler
 
 logger = sb.utils.logger.get_logger("speechbrain_data.py")
@@ -97,11 +98,6 @@ class PhonemeEncoder(sb.dataio.encoder.CategoricalEncoder):
 
 
 def make_encoders(hparams):
-    # Language is set to "unknown" with some chance
-    hparams["lang_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["lang_encoder"].expect_len(len(hparams["supported_languages"]))
-    hparams["lang_encoder"].update_from_iterable(hparams["supported_languages"])
-
     # Put unknown words at index 0 and ignore them
     hparams["word_encoder"] = sb.dataio.encoder.CategoricalEncoder()
     hparams["word_encoder"].expect_len(hparams["word_outputs"])
@@ -169,15 +165,15 @@ def make_datasets(hparams):
 
         return array
 
-    @sb.utils.data_pipeline.takes("path")
-    @sb.utils.data_pipeline.provides("wav_path", "grid_path")
+    @takes("path")
+    @provides("wav_path", "grid_path")
     def path_pipeline(path):
         """Create full path to files"""
         base = hparams["data_folder"] / pathlib.Path(path)
         return base.with_suffix(".mp3"), base.with_suffix(".TextGrid")
 
-    @sb.utils.data_pipeline.takes("wav_path")
-    @sb.utils.data_pipeline.provides("signal", "crop_start", "crop_len")
+    @takes("wav_path")
+    @provides("signal", "crop_start", "crop_len")
     def train_audio_pipeline(wav_path):
         """Training pipeline returns only a chunk for training efficiency"""
         audio = load_audio_and_resample(wav_path, hparams["fs"])
@@ -193,47 +189,53 @@ def make_datasets(hparams):
         crop_len = len(signal) // df + 1
         return signal, crop_start, crop_len
 
-    @sb.utils.data_pipeline.takes("wav_path")
-    @sb.utils.data_pipeline.provides("signal", "crop_start", "crop_len")
+    @takes("wav_path")
+    @provides("signal", "crop_start", "crop_len")
     def test_audio_pipeline(wav_path):
         """Testing pipeline returns full audio starting from 0."""
         audio = load_audio_and_resample(wav_path, hparams["fs"])
         crop_len = len(audio) // df + 1
         return audio, 0, crop_len
 
-    @sb.utils.data_pipeline.takes("grid_path")
-    @sb.utils.data_pipeline.provides("grid")
+    @takes("grid_path")
+    @provides("grid")
     def grid_pipeline(grid_path):
         """Load grid from file."""
         return textgrid.TextGrid.fromFile(grid_path)
 
-    @sb.utils.data_pipeline.takes("grid", "crop_start", "crop_len")
-    @sb.utils.data_pipeline.provides("phon_targets")
+    @takes("grid", "crop_start", "crop_len")
+    @provides("phon_targets")
     def phon_pipeline(grid, crop_start, crop_len):
         """Create time-aligned phoneme targets based on textgrid."""
         return grid2array(
             grid, "phones", crop_start, crop_len, hparams["phon_encoder"], postfix=""
         )
 
-    @sb.utils.data_pipeline.takes("crop_len", "lang")
-    @sb.utils.data_pipeline.provides("lang_targets")
-    def lang_pipeline(crop_len, lang):
-        """Create language targets with the same length as the audio."""
-        return np.full(crop_len, hparams["lang_encoder"].encode_label(lang), dtype=int)
-
-    @sb.utils.data_pipeline.takes("lang", "grid", "crop_start", "crop_len")
-    @sb.utils.data_pipeline.provides("word_targets")
+    @takes("lang", "grid", "crop_start", "crop_len")
+    @provides("word_targets")
     def word_pipeline(lang, grid, crop_start, crop_len):
         """Create time-aligned language-disambiguated word targets based on textgrid."""
         return grid2array(
             grid, "words", crop_start, crop_len, hparams["word_encoder"], postfix=f"_{lang}"
         )
 
-    pipelines = [path_pipeline, grid_pipeline, lang_pipeline, word_pipeline]
-    output_keys = ["id", "lang", "signal", "lang_targets", "word_targets"]
+    # This bit of shenanigans creates a separate language mask pipeline for each train lang
+    def create_mask_pipeline(lang):
+        @takes("lang")
+        @provides(f"{lang}_mask")
+        def mask_pipeline(l):
+            return lang == l
+        return mask_pipeline
+
+    # Glom together all the pipelines and output keys
+    pipelines = [path_pipeline, grid_pipeline, word_pipeline]
+    output_keys = ["id", "lang", "signal", "lang", "word_targets"]
     if hparams["phone_feedback"]:
         pipelines.append(phon_pipeline)
         output_keys.append("phon_targets")
+    for lang in hparams["train_languages"]:
+        pipelines.append(create_mask_pipeline(lang))
+        output_keys.append(f"{lang}_mask")
 
     datasets = {}
     for stage in ["train", "valid", "test"]:
@@ -257,16 +259,26 @@ def make_datasets(hparams):
             )
 
     # Enable random sampling if we're doing multilingual training
-    if len(hparams["train_languages"]) > 1:
-        with datasets["train"].output_keys_as(["lang"]):
-            weights = [hparams[f"{d['lang']}_weight"] for d in datasets["train"]]
+    # Or if we just want to take a random subset of samples each epoch
+    if len(hparams["train_languages"]) > 1 or "samples_per_epoch" in hparams:
+        if len(hparams["train_languages"]) > 1:
+            with datasets["train"].output_keys_as(["lang"]):
+                weights = [hparams[f"{d['lang']}_weight"] for d in datasets["train"]]
+        else:
+            weights = [1] * len(datasets["train"])
+
+        if "samples_per_epoch" in hparams:
+            num_samples = hparams["samples_per_epoch"]
+        else:
+            num_samples = len(datasets["train"]) // len(hparams["train_languages"])
 
         # Disable shuffle cuz sampler manages this
         hparams["dataloader_options"]["shuffle"] = False
         hparams["dataloader_options"]["sampler"] = ReproducibleWeightedRandomSampler(
             weights=weights,
-            num_samples=len(datasets["train"]) // len(hparams["train_languages"]),
-            replacement=False,
+            num_samples=num_samples,
+            replacement=num_samples >= len(datasets["train"]),
         )
+
 
     return datasets
