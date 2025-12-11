@@ -104,13 +104,17 @@ class BilingualBrain(sb.Brain):
                 valid_stats=stats,
             )
             self.metric_tracker.append({"epoch": epoch, **stats})
-            self.checkpointer.save_and_keep_only()
+
+            # Save one in ten epochs, it doesn't take that much space
+            if epoch % 10 == 0:
+                self.checkpointer.save_checkpoint()
 
         elif stage == sb.Stage.TEST:
             self.hparams.train_logger.log_stats(
                 stats_meta={"Epoch loaded": self.hparams.epoch_counter.current},
                 test_stats=stats,
             )
+            self.checkpointer.save_checkpoint()
 
             with open(self.hparams.metric_log, "w") as f:
                 json.dump(self.metric_tracker, f, indent=2)
