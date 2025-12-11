@@ -259,24 +259,15 @@ def make_datasets(hparams):
             )
 
     # Enable random sampling if we're doing multilingual training
-    # Or if we just want to take a random subset of samples each epoch
-    if len(hparams["train_languages"]) > 1 or "samples_per_epoch" in hparams:
-        if len(hparams["train_languages"]) > 1:
-            with datasets["train"].output_keys_as(["lang"]):
-                weights = [hparams[f"{d['lang']}_weight"] for d in datasets["train"]]
-        else:
-            weights = [1] * len(datasets["train"])
-
-        if "samples_per_epoch" in hparams:
-            num_samples = hparams["samples_per_epoch"]
-        else:
-            num_samples = len(datasets["train"]) // len(hparams["train_languages"])
+    if len(hparams["train_languages"]) > 1:
+        with datasets["train"].output_keys_as(["lang"]):
+            weights = [hparams[f"{d['lang']}_weight"] for d in datasets["train"]]
 
         # Disable shuffle cuz sampler manages this
         hparams["dataloader_options"]["shuffle"] = False
         hparams["dataloader_options"]["sampler"] = ReproducibleWeightedRandomSampler(
             weights=weights,
-            num_samples=num_samples,
+            num_samples=len(datasets["train"]) // len(hparams["train_languages"]),
             replacement=num_samples >= len(datasets["train"]),
         )
 

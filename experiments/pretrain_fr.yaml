@@ -69,7 +69,6 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 lr: 0.002
 batch_size: 64
 num_epochs: 128
-samples_per_epoch: 64_000
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
@@ -78,10 +77,13 @@ phone_feedback: False
 # For some weird reason this seems to cause memory leaks
 #precision: bf16
 
+# Check validation every 1000 batches so we can track
+# which models are learning the fastest (mono or bilingual)
 dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
   shuffle: True
+  looped_nominal_epoch: 1000
 
 test_loader_options:
   batch_size: !ref <batch_size>
@@ -97,18 +99,14 @@ opt_class: !name:torch.optim.Adam
 
 lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
   lr: !ref <lr>
-  n_warmup_steps: 8000 # 8 epochs, 1000 steps per epoch
-  total_steps: 80000 # 80 epochs per decay factor
+  n_warmup_steps: 8000
+  total_steps: 80000
   decay_factor: 0.3
 
 #################
 # Model hyperparameters
 phone_outputs: 49
 word_outputs: 8000
-temp: 2.0
-min_temp: 0.2
-t_range: !ref <temp> - <min_temp>
-t_step: !ref <t_range> / 80000  # spread over roughly 10 epochs
 model: !new:word_phone_model.WordPhoneModel
   input_size: !ref <n_mels>
   phone_outputs: !ref <phone_outputs>
@@ -119,10 +117,6 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_bidirectional: False
   rnn_dropout: 0.2
   phone_bottleneck: False
-  phone_softmax: False
-  phone_softmax_temp: !ref <temp>
-  phone_softmax_temp_step: !ref <t_step>
-  phone_softmax_temp_min: !ref <min_temp>
 
 phon_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
