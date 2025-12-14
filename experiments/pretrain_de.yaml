@@ -69,7 +69,7 @@ num_epochs: 20
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
-phone_feedback: False
+phone_feedback: True
 
 # For some weird reason this seems to cause memory leaks
 #precision: bf16

@@ -34,9 +34,9 @@ word_files:
 phon_files:
   fr: data/phonemes_fr.csv
   en: data/phonemes_en.csv
-test_portion: 0.05
-fr_weight: 0.99
-en_weight: 0.1
+test_portion: 0.02
+fr_weight: 1.0
+en_weight: 0.0
 
 train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
     save_file: !ref <train_log>
@@ -67,21 +67,28 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 
 #################
 # Training hyperparameters
+# Number of batches in data is ~8000, 64*8000 ~= 500k samples
+# 64k samples / 64 == 1000 batches per epoch, 8 epochs to see all data once
+# Convergence happens roughly after 20 times seeing all data once
+# Run for 150 epochs which is close-ish to 8 * 20
 lr: 0.002
 batch_size: 64
-num_epochs: 20
+num_epochs: 128
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
-phone_feedback: True
+phone_feedback: False
 
 # For some weird reason this seems to cause memory leaks
 #precision: bf16
 
+# Check validation every 1000 batches so we can track
+# which models are learning the fastest (mono or bilingual)
 dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
   shuffle: True
+  looped_nominal_epoch: 1000
 
 test_loader_options:
   batch_size: !ref <batch_size>
@@ -97,23 +104,17 @@ opt_class: !name:torch.optim.Adam
 
 lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
   lr: !ref <lr>
-  n_warmup_steps: 8000 # About one epoch
-  total_steps: 80000 # About ten epochs (for each decay factor)
+  n_warmup_steps: 8000
+  total_steps: 80000
   decay_factor: 0.3
 
 #################
 # Model hyperparameters
 phone_outputs: 49
-lang_outputs: 2
 word_outputs: 8000
-temp: 2.0
-min_temp: 0.2
-t_range: !ref <temp> - <min_temp>
-t_step: !ref <t_range> / 80000  # spread over roughly 10 epochs
 model: !new:word_phone_model.WordPhoneModel
   input_size: !ref <n_mels>
   phone_outputs: !ref <phone_outputs>
-  lang_outputs: !ref <lang_outputs>
   word_outputs: !ref <word_outputs>
   cnn_channels: 128
   rnn_neurons: 256
@@ -121,34 +122,56 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_bidirectional: False
   rnn_dropout: 0.2
   phone_bottleneck: False
-  #bottleneck_temperature: !ref <temp>
-  #bottleneck_temperature_step: !ref <t_step>
-  #bottleneck_temperature_min: !ref <min_temp>
 
-phon_metric: !new:torchmetrics.classification.MulticlassAccuracy
+phon_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
   average: micro
   ignore_index: 0
 
-lang_metric: !new:torchmetrics.classification.MulticlassAccuracy
-  num_classes: !ref <lang_outputs>
+phon_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
+  num_classes: !ref <phone_outputs>
   average: micro
+  ignore_index: 0
 
-word_metric: !new:torchmetrics.classification.MulticlassAccuracy
+phon_metrics:
+  fr: !ref <phon_fr_metric>
+  en: !ref <phon_en_metric>
+
+word_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <word_outputs>
   average: micro
   ignore_index: 0
 
-phon_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
+word_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
+  num_classes: !ref <word_outputs>
+  average: micro
+  ignore_index: 0
+
+word_metrics:
+  fr: !ref <word_fr_metric>
+  en: !ref <word_en_metric>
+
+phon_fr_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
   num_classes: !ref <phone_outputs>
   ignore_index: 0
 
+phon_en_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
+  num_classes: !ref <phone_outputs>
+  ignore_index: 0
+
+phon_confusions:
+  fr: !ref <phon_fr_confusion>
+  en: !ref <phon_en_confusion>
+
+# Add metrics to modules cuz they complain if they're not on the model device
 modules:
   model: !ref <model>
-  phon_metric: !ref <phon_metric>
-  lang_metric: !ref <lang_metric>
-  word_metric: !ref <word_metric>
-  phon_confusion: !ref <phon_confusion>
+  phon_fr_metric: !ref <phon_fr_metric>
+  phon_en_metric: !ref <phon_en_metric>
+  word_fr_metric: !ref <word_fr_metric>
+  word_en_metric: !ref <word_en_metric>
+  phon_fr_confusion: !ref <phon_fr_confusion>
+  phon_en_confusion: !ref <phon_en_confusion>
 
 pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
   loadables:

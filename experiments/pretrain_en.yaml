@@ -8,7 +8,7 @@
 # Based on recipe by:
 #  * Loren Lugosch (2023?)
 # etc.
-seed: 12345
+seed: 12348
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 #######################
@@ -17,6 +17,7 @@ data_folder: data
 output_folder: !ref results/<seed>
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
+metric_log: !ref <output_folder>/metric_log.json
 confusions_valid: !ref <output_folder>/confusions_valid.txt
 confusions_test: !ref <output_folder>/confusions_test.txt
 train_en_manifest: manifests/train_en.json
@@ -61,13 +62,17 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 
 #################
 # Training hyperparameters
+# Number of batches in data is ~8000, 64*8000 ~= 500k samples
+# 64k samples / 64 == 1000 batches per epoch, 8 epochs to see all data once
+# Convergence happens roughly after 20 times seeing all data once
+# Run for 150 epochs which is close-ish to 8 * 20
 lr: 0.002
 batch_size: 64
-num_epochs: 20
+num_epochs: 128
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
-phone_feedback: True
+phone_feedback: False
 
 # For some weird reason this seems to cause memory leaks
 #precision: bf16
@@ -76,6 +81,7 @@ dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
   shuffle: True
+  looped_nominal_epoch: 1000
 
 test_loader_options:
   batch_size: !ref <batch_size>
@@ -91,19 +97,17 @@ opt_class: !name:torch.optim.Adam
 
 lr_annealing: !new:speechbrain.nnet.schedulers.WarmAndExpDecayLRSchedule
   lr: !ref <lr>
-  n_warmup_steps: 8000 # About one epoch
-  total_steps: 80000 # About ten epochs (for each decay factor)
+  n_warmup_steps: 8000 # 8 epochs, 1000 steps per epoch
+  total_steps: 80000 # 80 epochs per decay factor
   decay_factor: 0.3
 
 #################
 # Model hyperparameters
 phone_outputs: 49
-lang_outputs: 2
 word_outputs: 8000
 model: !new:word_phone_model.WordPhoneModel
   input_size: !ref <n_mels>
   phone_outputs: !ref <phone_outputs>
-  lang_outputs: !ref <lang_outputs>
   word_outputs: !ref <word_outputs>
   cnn_channels: 128
   rnn_neurons: 256
@@ -112,27 +116,52 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_dropout: 0.2
   phone_bottleneck: False
 
-phon_metric: !new:torchmetrics.classification.MulticlassAccuracy
+phon_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
   average: micro
   ignore_index: 0
 
-lang_metric: !new:torchmetrics.classification.MulticlassAccuracy
-  num_classes: !ref <lang_outputs>
+phon_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
+  num_classes: !ref <phone_outputs>
   average: micro
+  ignore_index: 0
 
-word_metric: !new:torchmetrics.classification.MulticlassAccuracy
+phon_metrics:
+  fr: !ref <phon_fr_metric>
+  en: !ref <phon_en_metric>
+
+word_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <word_outputs>
   average: micro
   ignore_index: 0
 
-phon_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
+word_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
+  num_classes: !ref <word_outputs>
+  average: micro
+  ignore_index: 0
+
+word_metrics:
+  fr: !ref <word_fr_metric>
+  en: !ref <word_en_metric>
+
+phon_fr_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
   num_classes: !ref <phone_outputs>
   ignore_index: 0
 
+phon_en_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
+  num_classes: !ref <phone_outputs>
+  ignore_index: 0
+
+phon_confusions:
+  fr: !ref <phon_fr_confusion>
+  en: !ref <phon_en_confusion>
+
+# Add metrics to modules cuz they complain if they're not on the model device
 modules:
   model: !ref <model>
-  phon_metric: !ref <phon_metric>
-  lang_metric: !ref <lang_metric>
-  word_metric: !ref <word_metric>
-  phon_confusion: !ref <phon_confusion>
+  phon_fr_metric: !ref <phon_fr_metric>
+  phon_en_metric: !ref <phon_en_metric>
+  word_fr_metric: !ref <word_fr_metric>
+  word_en_metric: !ref <word_en_metric>
+  phon_fr_confusion: !ref <phon_fr_confusion>
+  phon_en_confusion: !ref <phon_en_confusion>

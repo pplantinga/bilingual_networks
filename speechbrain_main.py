@@ -48,6 +48,9 @@ class BilingualBrain(sb.Brain):
         if stage != sb.Stage.TRAIN:
             for lang in self.hparams.train_languages:
                 lang_mask = getattr(batch, f"{lang}_mask")
+                if not lang_mask.any():
+                    continue
+
                 self.hparams.word_metrics[lang](
                     word_out[lang_mask], word_targets[lang_mask]
                 )
@@ -63,6 +66,18 @@ class BilingualBrain(sb.Brain):
         super().on_fit_start()
 
         self.metric_tracker = []
+
+    def init_optimizers(self):
+        all_params = self.modules.parameters()
+        self.optimizer = self.opt_class(all_params)
+        self.optimizers_dict = {"opt_class": self.optimizer}
+        self.checkpointer.add_recoverable("optimizer", self.optimizer)
+
+        # Load optimizer parameters
+        if hasattr(self.hparams, "pretrainer"):
+            opt_file = self.hparams.pretrained_path + "/optimizer.ckpt"
+            opt_params = torch.load(opt_file)
+            self.optimizer.load_state_dict(opt_params)
 
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
         """Update LR after every batch"""

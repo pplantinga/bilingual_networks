@@ -268,7 +268,7 @@ def make_datasets(hparams):
         hparams["dataloader_options"]["sampler"] = ReproducibleWeightedRandomSampler(
             weights=weights,
             num_samples=len(datasets["train"]) // len(hparams["train_languages"]),
-            replacement=num_samples >= len(datasets["train"]),
+            replacement=False,
         )
 
 
