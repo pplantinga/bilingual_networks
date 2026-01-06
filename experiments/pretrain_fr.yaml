@@ -8,7 +8,7 @@
 # Based on recipe by:
 #  * Loren Lugosch (2023?)
 # etc.
-seed: 12348
+seed: 12349
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 
 #######################
@@ -31,7 +31,7 @@ word_files:
 phon_files:
   fr: data/phonemes_fr.csv
   en: data/phonemes_en.csv
-test_portion: 0.05
+test_portion: 0.02
 
 train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
     save_file: !ref <train_log>
@@ -68,7 +68,7 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 # Run for 150 epochs which is close-ish to 8 * 20
 lr: 0.002
 batch_size: 64
-num_epochs: 128
+num_epochs: 250
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
@@ -77,13 +77,13 @@ phone_feedback: False
 # For some weird reason this seems to cause memory leaks
 #precision: bf16
 
-# Check validation every 1000 batches so we can track
+# Check validation every 500 batches so we can track
 # which models are learning the fastest (mono or bilingual)
 dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
   shuffle: True
-  looped_nominal_epoch: 1000
+  looped_nominal_epoch: 500
 
 test_loader_options:
   batch_size: !ref <batch_size>

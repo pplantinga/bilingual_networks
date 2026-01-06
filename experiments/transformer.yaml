@@ -7,28 +7,27 @@
 # Authors:  Titouan Parcollet and Jianyuan Zhong
 # ############################################################################
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 3407
+seed: 3408
 __set_seed: !apply:speechbrain.utils.seed_everything [!ref <seed>]
-output_folder: !ref results/conformer_fr/<seed>
+output_folder: !ref results/conformer_en/<seed>
 output_wer_folder: !ref <output_folder>/
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
+tokenizer_save_folder: manifests/en_tokenizer
 
 # Data files
-data_folder: !PLACEHOLDER  # e.g, /localscratch/cv-corpus-5.1-2020-06-22/fr
-#train_fr_manifest: manifests/train_fr.json
-#valid_fr_manifest: manifests/valid_fr.json
-train_fr_manifest: manifests/test_fr.json
-valid_fr_manifest: manifests/test_fr.json
-test_fr_manifest: manifests/test_fr.json
-fr_combined: manifests/words_fr.txt
-train_languages: ["fr"]
+data_folder: data
+train_en_manifest: manifests/train_en.json
+valid_en_manifest: manifests/valid_en.json
+test_en_manifest: manifests/test_en.json
+en_combined: manifests/words_en.txt
+train_languages: ["en"]
 test_portion: 0.02
 
-ckpt_interval_minutes: 15 # save checkpoint every N min
+#ckpt_interval_minutes: 15 # save checkpoint every N min
 
 ####################### Training Parameters ####################################
-number_of_epochs: 50
+number_of_epochs: 15
 optimizer_step_limit: 250000
 batch_size: 32 # This works with a 32GB GPU ! (bs * nb_gpu * accum) > 128 !
 ctc_weight: 0.3
@@ -36,7 +35,7 @@ grad_accumulation_factor: 4
 loss_reduction: 'batchmean'
 sorting: random
 num_workers: 4
-precision: fp16 # bf16, fp16 or fp32
+#precision: fp16 # bf16, fp16 or fp32
 
 # stages related parameters
 lr_adam: 0.0008
@@ -56,8 +55,8 @@ n_mels: 80
 # This setup works well for A100 80GB GPU, adapts it to your needs.
 # Or turn it off (but training speed will decrease)
 dynamic_batching: True
-max_batch_length_train: 50
-max_batch_length_val: 20 # we reduce it as the beam is much wider (VRAM)
+max_batch_length_train: 300
+max_batch_length_val: 100 # we reduce it as the beam is much wider (VRAM)
 num_bucket: 200
 shuffle: True # if true re-creates batches at each epoch shuffling examples.
 batch_ordering: random
@@ -111,7 +110,7 @@ eos_index: 2
 # Decoding parameters
 min_decode_ratio: 0.0
 max_decode_ratio: 1.0
-valid_search_interval: 10
+valid_search_interval: 15
 valid_beam_size: 1 # We do greedy here so it's faster to decode ...
 test_beam_size: 10
 ctc_weight_decode: 0.3
@@ -140,7 +139,7 @@ Transformer: !new:speechbrain.lobes.models.transformer.TransformerASR.Transforme
     conformer_activation: !ref <activation>
     activation: !ref <activation>
     encoder_module: conformer
-    attention_type: RoPEMHA
+    attention_type: RelPosMHAXL
     normalize_before: True
     causal: False
 
@@ -157,6 +156,7 @@ modules:
     Transformer: !ref <Transformer>
     seq_lin: !ref <seq_lin>
     ctc_lin: !ref <ctc_lin>
+    normalize: !ref <normalize>
 
 model: !new:torch.nn.ModuleList
     - [!ref <CNN>, !ref <Transformer>, !ref <seq_lin>, !ref <ctc_lin>]

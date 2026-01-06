@@ -116,6 +116,7 @@ class BilingualBrain(sb.Brain):
         if stage == sb.Stage.VALID:
             self.hparams.train_logger.log_stats(
                 stats_meta={"epoch": epoch},
+                train_stats={"lr": self.hparams.lr_annealing.current_lr},
                 valid_stats=stats,
             )
             self.metric_tracker.append({"epoch": epoch, **stats})
@@ -129,7 +130,6 @@ class BilingualBrain(sb.Brain):
                 stats_meta={"Epoch loaded": self.hparams.epoch_counter.current},
                 test_stats=stats,
             )
-            self.checkpointer.save_checkpoint()
 
             with open(self.hparams.metric_log, "w") as f:
                 json.dump(self.metric_tracker, f, indent=2)

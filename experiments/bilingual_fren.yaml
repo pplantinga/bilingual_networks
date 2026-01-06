@@ -19,6 +19,7 @@ save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
 confusions_valid: !ref <output_folder>/confusions_valid.txt
 confusions_test: !ref <output_folder>/confusions_test.txt
+metric_log: !ref <output_folder>/metric_log.json
 pretrained_path: !PLACEHOLDER
 train_fr_manifest: manifests/train_fr.json
 valid_fr_manifest: manifests/valid_fr.json
@@ -73,7 +74,7 @@ compute_features: !new:speechbrain.lobes.features.Fbank
 # Run for 150 epochs which is close-ish to 8 * 20
 lr: 0.002
 batch_size: 64
-num_epochs: 128
+num_epochs: 250
 max_grad_norm: 5.0
 random_crop_len: 3.5  # seconds
 skip_nonfinite_grads: True
@@ -88,7 +89,7 @@ dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
   shuffle: True
-  looped_nominal_epoch: 1000
+  looped_nominal_epoch: 500
 
 test_loader_options:
   batch_size: !ref <batch_size>
@@ -127,26 +128,16 @@ phon_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
   average: micro
   ignore_index: 0
-
-phon_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
-  num_classes: !ref <phone_outputs>
-  average: micro
-  ignore_index: 0
-
+phon_en_metric: !copy <phon_fr_metric>
 phon_metrics:
   fr: !ref <phon_fr_metric>
   en: !ref <phon_en_metric>
-
-word_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
-  num_classes: !ref <word_outputs>
-  average: micro
-  ignore_index: 0
 
 word_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <word_outputs>
   average: micro
   ignore_index: 0
-
+word_en_metric: !copy <word_fr_metric>
 word_metrics:
   fr: !ref <word_fr_metric>
   en: !ref <word_en_metric>
@@ -154,11 +145,7 @@ word_metrics:
 phon_fr_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
   num_classes: !ref <phone_outputs>
   ignore_index: 0
-
-phon_en_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
-  num_classes: !ref <phone_outputs>
-  ignore_index: 0
-
+phon_en_confusion: !copy <phon_fr_confusion>
 phon_confusions:
   fr: !ref <phon_fr_confusion>
   en: !ref <phon_en_confusion>

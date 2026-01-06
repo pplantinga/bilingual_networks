@@ -24,7 +24,6 @@ from hyperpyyaml import load_hyperpyyaml
 
 import data_sb
 import speechbrain as sb
-from speechbrain.dataio import audio_io
 from speechbrain.tokenizers.SentencePiece import SentencePiece
 from speechbrain.utils.data_utils import undo_padding
 from speechbrain.utils.distributed import run_on_main
@@ -259,6 +258,7 @@ def dataio_prepare(hparams):
         """Load words from file."""
         grid = textgrid.TextGrid.fromFile(grid_path)
         words = [i.mark.strip() for i in grid.getList("words")[0]]
+        words = list(filter(lambda x: x and x != "<unk>", words))
         return " ".join(words)
 
     # Define datasets before the text pipeline so that
@@ -281,7 +281,7 @@ def dataio_prepare(hparams):
 
     # Defining tokenizer and loading it, training it if not done already
     hparams["tokenizer"] = SentencePiece(
-        model_dir=hparams["save_folder"],
+        model_dir=hparams["tokenizer_save_folder"],
         vocab_size=hparams["output_neurons"],
         model_type=hparams["token_type"],
         character_coverage=hparams["character_coverage"],
@@ -297,7 +297,7 @@ def dataio_prepare(hparams):
     @sb.utils.data_pipeline.provides(*token_keys)
     def token_pipeline(words):
         tokens_list = hparams["tokenizer"].sp.encode_as_ids(words)
-        tokens_bos = torch.LongTensor([hparams["bos_index"]] + (tokens_list))
+        tokens_bos = torch.LongTensor([hparams["bos_index"]] + tokens_list)
         yield tokens_bos
         tokens_eos = torch.LongTensor(tokens_list + [hparams["eos_index"]])
         yield tokens_eos
