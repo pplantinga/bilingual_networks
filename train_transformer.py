@@ -43,15 +43,6 @@ class ASR(sb.core.Brain):
         wavs, wav_lens = wavs.to(self.device), wav_lens.to(self.device)
         tokens_bos, _ = batch.tokens_bos
 
-        # Add waveform augmentation if specified.
-        if (
-            stage == sb.Stage.TRAIN
-            and hasattr(self.hparams, "wav_augment")
-            and self.optimizer_step > self.hparams.augment_warmup
-        ):
-            wavs, wav_lens = self.hparams.wav_augment(wavs, wav_lens)
-            tokens_bos = self.hparams.wav_augment.replicate_labels(tokens_bos)
-
         # compute features
         feats = self.hparams.compute_features(wavs)
         current_epoch = self.hparams.epoch_counter.current
@@ -113,18 +104,6 @@ class ASR(sb.core.Brain):
             # Labels must be extended if parallel augmentation or concatenated
             # augmentation was performed on the input (increasing the time dimension)
             if (
-                hasattr(self.hparams, "wav_augment")
-                and self.optimizer_step > self.hparams.augment_warmup
-            ):
-                (
-                    tokens,
-                    tokens_lens,
-                    tokens_eos,
-                    tokens_eos_lens,
-                ) = self.hparams.wav_augment.replicate_multiple_labels(
-                    tokens, tokens_lens, tokens_eos, tokens_eos_lens
-                )
-            if (
                 hasattr(self.hparams, "fea_augment")
                 and self.optimizer_step > self.hparams.augment_warmup
             ):
@@ -168,6 +147,19 @@ class ASR(sb.core.Brain):
             # compute the accuracy of the one-step-forward prediction
             self.acc_metric.append(p_seq, tokens_eos, tokens_eos_lens)
         return loss
+
+    def init_optimizers(self):
+        """Initialize optimzers and load pretrained optimizer if needed"""
+        all_params = self.modules.parameters()
+        self.optimizer = self.opt_class(all_params)
+        self.optimizers_dict = {"opt_class": self.optimizer}
+        self.checkpointer.add_recoverable("optimizer", self.optimizer)
+
+        # Load optimizer parameters
+        if hasattr(self.hparams, "pretrainer"):
+            opt_file = self.hparams.pretrained_path + "/optimizer.ckpt"
+            opt_params = torch.load(opt_file)
+            self.optimizer.load_state_dict(opt_params)
 
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
         """At the end of the optimizer step, apply noam annealing."""
@@ -344,6 +336,11 @@ if __name__ == "__main__":
         hyperparams_to_save=hparams_file,
         overrides=overrides,
     )
+
+    # Load pretrained weights if available
+    if "pretrainer" in hparams:
+        hparams["pretrainer"].collect_files()
+        hparams["pretrainer"].load_collected()
 
     data_sb.make_manifests(hparams)
     datasets = dataio_prepare(hparams)

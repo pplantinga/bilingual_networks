@@ -7,15 +7,16 @@
 # Authors:  Titouan Parcollet and Jianyuan Zhong
 # ############################################################################
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 3408
+seed: 3409
 __set_seed: !apply:speechbrain.utils.seed_everything [!ref <seed>]
-output_folder: !ref results/conformer_en/<seed>
+output_folder: !ref results/conformer_en_pretrained_fr/<seed>
 output_wer_folder: !ref <output_folder>/
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
 tokenizer_save_folder: manifests/en_tokenizer
 
 # Data files
+pretrained_path: !PLACEHOLDER
 data_folder: data
 train_en_manifest: manifests/train_en.json
 valid_en_manifest: manifests/valid_en.json
@@ -274,3 +275,11 @@ error_rate_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
 acc_computer: !name:speechbrain.utils.Accuracy.AccuracyStats
 cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
     split_tokens: True
+
+
+# Comment out if you don't want to load pretrained model
+pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
+  loadables:
+    model: !ref <model>
+  paths:
+    model: !ref <pretrained_path>/model.ckpt
