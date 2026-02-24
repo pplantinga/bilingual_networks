@@ -82,7 +82,8 @@ class BilingualBrain(sb.Brain):
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
         """Update LR after every batch"""
         if should_step:
-            self.hparams.lr_annealing(self.optimizer)
+            if hasattr(self.hparams, "lr_annealing"):
+                self.hparams.lr_annealing(self.optimizer)
             if self.modules.model.phone_bottleneck:
                 self.modules.model.step_bottleneck_temp()
 
@@ -103,7 +104,7 @@ class BilingualBrain(sb.Brain):
             if self.hparams.phone_feedback:
                 stats.update({
                     f"phon_{lang}_acc": compute_metric(self.hparams.phon_metrics[lang])
-                    for lang in self.hparams.train_language
+                    for lang in self.hparams.train_languages
                 })
 
                 # Save confusions to file
@@ -114,10 +115,13 @@ class BilingualBrain(sb.Brain):
                 #    torch.save(confusions, self.hparams.confusions_test + "." + lang)
 
         if stage == sb.Stage.VALID:
+            if hasattr(self.hparams, "lr_annealing"):
+                lr = self.hparams.lr_annealing.current_lr
+            else:
+                lr = self.hparams.lr
+
             self.hparams.train_logger.log_stats(
-                stats_meta={"epoch": epoch},
-                train_stats={"lr": self.hparams.lr_annealing.current_lr},
-                valid_stats=stats,
+                stats_meta={"epoch": epoch}, train_stats={"lr": lr}, valid_stats=stats,
             )
             self.metric_tracker.append({"epoch": epoch, **stats})
 
@@ -157,6 +161,16 @@ if __name__ == "__main__":
     if "pretrainer" in hparams:
         hparams["pretrainer"].collect_files()
         hparams["pretrainer"].load_collected()
+
+        # Freeze params if requested
+        if "freeze_model" in hparams and hparams["freeze_model"]:
+            for p in hparams["model"].parameters():
+                p.requires_grad = False
+
+            # Unfreeze phoneme output layer
+            for p in hparams["model"].phone_out.parameters():
+                p.requires_grad = True
+
 
     # Manifests will only be made once, encoders and datasets every time
     data_sb.make_manifests(hparams)
