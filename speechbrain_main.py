@@ -60,6 +60,15 @@ class BilingualBrain(sb.Brain):
                         phon_out[lang_mask], phon_targets[lang_mask]
                     )
 
+            if hasattr(self.hparams, "phon_bin_metrics"):
+                predictions = phon_out.argmax(dim=1)
+                for phoneme, metric in self.hparams.phon_bin_metrics.items():
+                    metric.to(self.device)
+                    phoneme_index = self.hparams.phon_encoder.encode_label_torch(phoneme).item()
+                    bin_preds = predictions == phoneme_index
+                    bin_targs = phon_targets == phoneme_index
+                    metric(bin_preds, bin_targs)
+
         return phon_loss + word_loss
 
     def on_fit_start(self):
@@ -113,6 +122,12 @@ class BilingualBrain(sb.Brain):
                 #    torch.save(confusions, self.hparams.confusions_valid + "." + lang)
                 #else:
                 #    torch.save(confusions, self.hparams.confusions_test + "." + lang)
+
+            if hasattr(self.hparams, "phon_bin_metrics"):
+                stats.update({
+                    f"phon_{p}_f1": compute_metric(self.hparams.phon_bin_metrics[p])
+                    for p in self.hparams.phon_bin_metrics
+                })
 
         if stage == sb.Stage.VALID:
             if hasattr(self.hparams, "lr_annealing"):

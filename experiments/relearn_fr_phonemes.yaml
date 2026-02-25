@@ -85,7 +85,7 @@ dataloader_options:
   batch_size: !ref <batch_size>
   num_workers: 4
   shuffle: True
-  looped_nominal_epoch: 50
+  looped_nominal_epoch: 10
 
 test_loader_options:
   batch_size: !ref <batch_size>
@@ -129,6 +129,11 @@ phon_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
   average: micro
   ignore_index: 0
+
+phon_bin_metrics:
+  ɑ̃: !new:torchmetrics.classification.BinaryF1Score
+  ɔ̃: !new:torchmetrics.classification.BinaryF1Score
+  ɛ̃: !new:torchmetrics.classification.BinaryF1Score
 
 phon_metrics:
   fr: !ref <phon_fr_metric>
