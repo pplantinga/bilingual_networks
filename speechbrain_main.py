@@ -140,8 +140,7 @@ class BilingualBrain(sb.Brain):
             )
             self.metric_tracker.append({"epoch": epoch, **stats})
 
-            # Save one in ten epochs, it doesn't take that much space
-            if epoch % 10 == 0:
+            if epoch % self.hparams.checkpoint_after_epochs == 0:
                 self.checkpointer.save_checkpoint()
 
         elif stage == sb.Stage.TEST:
