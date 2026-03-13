@@ -98,17 +98,18 @@ class PhonemeEncoder(sb.dataio.encoder.CategoricalEncoder):
 
 
 def make_encoders(hparams):
-    # Put unknown words at index 0 and ignore them
-    hparams["word_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-    hparams["word_encoder"].expect_len(hparams["word_outputs"])
-    hparams["word_encoder"].add_unk()
+    if "word_feedback" not in hparams or hparams["word_feedback"]:
+        # Put unknown words at index 0 and ignore them
+        hparams["word_encoder"] = sb.dataio.encoder.CategoricalEncoder()
+        hparams["word_encoder"].expect_len(hparams["word_outputs"])
+        hparams["word_encoder"].add_unk()
 
-    # Add words from both languages so we don't have to modify architecture
-    # Some words may be spelled the same but we disambiguate with a language tag
-    for lang, word_file in hparams["word_files"].items():
-        word_list = pd.read_csv(word_file)["word"]
-        hparams["word_encoder"].update_from_iterable(word_list + "_" + lang)
-    logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")
+        # Add words from both languages so we don't have to modify architecture
+        # Some words may be spelled the same but we disambiguate with a language tag
+        for lang, word_file in hparams["word_files"].items():
+            word_list = pd.read_csv(word_file)["word"]
+            hparams["word_encoder"].update_from_iterable(word_list + "_" + lang)
+        logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")
 
     # Iterate language phone files to add all symbols to encoders
     if hparams["phone_feedback"]:
@@ -228,8 +229,11 @@ def make_datasets(hparams):
         return mask_pipeline
 
     # Glom together all the pipelines and output keys
-    pipelines = [path_pipeline, grid_pipeline, word_pipeline]
-    output_keys = ["id", "lang", "signal", "lang", "word_targets"]
+    pipelines = [path_pipeline, grid_pipeline]
+    output_keys = ["id", "lang", "signal", "lang"]
+    if "word_feedback" not in hparams or hparams["word_feedback"]:
+        pipelines.append(word_pipeline)
+        output_keys.append("word_targets")
     if hparams["phone_feedback"]:
         pipelines.append(phon_pipeline)
         output_keys.append("phon_targets")
