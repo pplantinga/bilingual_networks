@@ -104,12 +104,14 @@ def make_encoders(hparams):
     if "word_feedback" not in hparams or hparams["word_feedback"]:
         # Put unknown words at index 0 and ignore them
         hparams["word_encoder"] = sb.dataio.encoder.CategoricalEncoder()
-        hparams["word_encoder"].expect_len(hparams["word_outputs"])
+        #hparams["word_encoder"].expect_len(hparams["word_outputs"])
+        hparams["word_encoder"].ignore_len()
         hparams["word_encoder"].add_unk()
 
         # Add words from both languages so we don't have to modify architecture
         # Some words may be spelled the same but we disambiguate with a language tag
-        for lang, word_file in hparams["word_files"].items():
+        for lang in hparams["supported_languages"]:
+            word_file = hparams["word_files"][lang]
             word_list = pd.read_csv(word_file)["word"]
             hparams["word_encoder"].update_from_iterable(word_list + "_" + lang)
         logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")

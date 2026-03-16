@@ -7,41 +7,51 @@
 # Authors:  Titouan Parcollet and Jianyuan Zhong
 # ############################################################################
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 3409
+seed: 3420
 __set_seed: !apply:speechbrain.utils.seed_everything [!ref <seed>]
-output_folder: !ref results/conformer_en_pretrained_fr/<seed>
+output_folder: !ref results/conformer_en/<seed>
 output_wer_folder: !ref <output_folder>/
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
-tokenizer_save_folder: manifests/en_tokenizer
+tokenizer_fr_folder: manifests/fr_tokenizer
+tokenizer_en_folder: manifests/en_tokenizer
+tokenizer_de_folder: manifests/de_tokenizer
 
 # Data files
 #pretrained_path: !PLACEHOLDER
 data_folder: data
+train_fr_manifest: manifests/train_fr.json
+valid_fr_manifest: manifests/valid_fr.json
+test_fr_manifest: manifests/test_fr.json
 train_en_manifest: manifests/train_en.json
 valid_en_manifest: manifests/valid_en.json
 test_en_manifest: manifests/test_en.json
+train_de_manifest: manifests/train_de.json
+valid_de_manifest: manifests/valid_de.json
+test_de_manifest: manifests/test_de.json
+fr_combined: manifests/words_fr.txt
 en_combined: manifests/words_en.txt
+de_combined: manifests/words_de.txt
 train_languages: ["en"]
 test_portion: 0.02
 
 #ckpt_interval_minutes: 15 # save checkpoint every N min
 
 ####################### Training Parameters ####################################
-number_of_epochs: 15
+number_of_epochs: 20
 optimizer_step_limit: 250000
 batch_size: 32 # This works with a 32GB GPU ! (bs * nb_gpu * accum) > 128 !
 ctc_weight: 0.3
-grad_accumulation_factor: 4
+grad_accumulation_factor: 6
 loss_reduction: 'batchmean'
 sorting: random
 num_workers: 4
 #precision: fp16 # bf16, fp16 or fp32
 
 # stages related parameters
-lr_adam: 0.0008
+lr_adam: 0.001
 weight_decay: 0.01
-warmup_steps: 25000
+warmup_steps: 12000
 augment_warmup: 8000
 
 # BPE parameters
@@ -111,7 +121,7 @@ eos_index: 2
 # Decoding parameters
 min_decode_ratio: 0.0
 max_decode_ratio: 1.0
-valid_search_interval: 15
+valid_search_interval: !ref <number_of_epochs>
 valid_beam_size: 1 # We do greedy here so it's faster to decode ...
 test_beam_size: 10
 ctc_weight_decode: 0.3
@@ -212,15 +222,21 @@ seq_cost: !name:speechbrain.nnet.losses.kldiv_loss
     label_smoothing: !ref <label_smoothing>
     reduction: !ref <loss_reduction>
 
-noam_annealing: !new:speechbrain.nnet.schedulers.NoamScheduler
-    lr_initial: !ref <lr_adam>
-    n_warmup_steps: !ref <warmup_steps>
+#noam_annealing: !new:speechbrain.nnet.schedulers.NoamScheduler
+#    lr_initial: !ref <lr_adam>
+#    n_warmup_steps: !ref <warmup_steps>
+scheduler: !name:transformers.get_wsd_schedule
+    num_warmup_steps: !ref <warmup_steps>
+    warmup_type: linear
+    num_decay_steps: 0           # NO decay
+    num_training_steps: 10000000 # Some suitably huge number
+
 
 checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
     checkpoints_dir: !ref <save_folder>
     recoverables:
         model: !ref <model>
-        noam_scheduler: !ref <noam_annealing>
+        #noam_scheduler: !ref <noam_annealing>
         normalizer: !ref <normalize>
         counter: !ref <epoch_counter>
 

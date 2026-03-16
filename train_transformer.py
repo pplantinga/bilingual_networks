@@ -154,6 +154,7 @@ class ASR(sb.core.Brain):
         self.optimizer = self.opt_class(all_params)
         self.optimizers_dict = {"opt_class": self.optimizer}
         self.checkpointer.add_recoverable("optimizer", self.optimizer)
+        self.scheduler = self.hparams.scheduler(self.optimizer)
 
         # Load optimizer parameters
         if hasattr(self.hparams, "pretrainer"):
@@ -161,10 +162,12 @@ class ASR(sb.core.Brain):
             opt_params = torch.load(opt_file)
             self.optimizer.load_state_dict(opt_params)
 
+
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
-        """At the end of the optimizer step, apply noam annealing."""
+        """At the end of the optimizer step, apply annealing."""
         if should_step:
-            self.hparams.noam_annealing(self.optimizer)
+            #self.hparams.noam_annealing(self.optimizer)
+            self.scheduler.step()
 
     def on_stage_start(self, stage, epoch):
         """Gets called at the beginning of each epoch"""
@@ -194,22 +197,23 @@ class ASR(sb.core.Brain):
         if stage == sb.Stage.VALID:
             # report different epoch stages according current stage
             current_epoch = self.hparams.epoch_counter.current
-            lr = self.hparams.noam_annealing.current_lr
-            steps = self.hparams.noam_annealing.n_steps
+            #lr = self.hparams.noam_annealing.current_lr
+            #steps = self.hparams.noam_annealing.n_steps
 
             epoch_stats = {
                 "epoch": epoch,
-                "lr": lr,
-                "steps": steps,
+                "lr": self.scheduler.get_lr(),
+                "steps": self.optimizer_step,
             }
             self.hparams.train_logger.log_stats(
                 stats_meta=epoch_stats,
                 train_stats=self.train_stats,
                 valid_stats=stage_stats,
             )
-            self.checkpointer.save_and_keep_only(
+            #self.checkpointer.save_and_keep_only(
+            self.checkpointer.save_checkpoint(
                 meta={"ACC": stage_stats["ACC"], "epoch": epoch},
-                max_keys=["ACC"],
+            #    max_keys=["ACC"],
             )
 
         elif stage == sb.Stage.TEST:
@@ -273,7 +277,7 @@ def dataio_prepare(hparams):
 
     # Defining tokenizer and loading it, training it if not done already
     hparams["tokenizer"] = SentencePiece(
-        model_dir=hparams["tokenizer_save_folder"],
+        model_dir=hparams[f"tokenizer_{lang}_folder"],
         vocab_size=hparams["output_neurons"],
         model_type=hparams["token_type"],
         character_coverage=hparams["character_coverage"],
