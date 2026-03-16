@@ -7,7 +7,7 @@
 # Authors:  Titouan Parcollet and Jianyuan Zhong
 # ############################################################################
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 3409
+seed: 3411
 __set_seed: !apply:speechbrain.utils.seed_everything [!ref <seed>]
 output_folder: !ref results/phoneme_probe_fr/<seed>
 output_wer_folder: !ref <output_folder>/
@@ -24,7 +24,7 @@ valid_fr_manifest: manifests/valid_fr.json
 test_fr_manifest: manifests/test_fr.json
 fr_combined: manifests/words_fr.txt
 train_languages: ["fr"]
-phon_files:
+phone_files:
   fr: data/phonemes_fr.csv
 test_portion: 0.02
 
@@ -35,14 +35,15 @@ grad_accumulation_factor: 1
 loss_reduction: 'batchmean'
 sorting: random
 num_workers: 4
-phone_feedback: True
+phone_feedback: False
+phone_sequence: True
 word_feedback: False
 freeze_model: True
 #precision: fp16 # bf16, fp16 or fp32
 
 # stages related parameters
-lr_adam: 0.0001
-weight_decay: 0.01
+lr_adam: 0.001
+weight_decay: 0.001
 #warmup_steps: 25000
 #augment_warmup: 8000
 
@@ -55,7 +56,7 @@ fs: 16000
 n_fft: 400
 n_mels: 80
 downsample_factor: 640 # 160 for features, plus 2 layers of 2x downsample CNN
-random_crop_len: 5  # 5 seconds random crop for phonemes
+random_crop_len: -1 # Use full audio
 
 # This setup works well for A100 80GB GPU, adapts it to your needs.
 # Or turn it off (but training speed will decrease)
@@ -99,7 +100,7 @@ nhead: 8
 num_encoder_layers: 12
 num_decoder_layers: 6
 d_ffn: 2048
-transformer_dropout: 0.1
+transformer_dropout: 0.0
 activation: !name:torch.nn.GELU
 output_neurons: 5120
 
@@ -131,7 +132,7 @@ CNN: !new:speechbrain.lobes.models.convolution.ConvolutionFrontEnd
     residuals: (False, False)
 
 cnn_out_size: 640
-Transformer: !new:speechbrain.lobes.models.transformer.TransformerASR.TransformerASR # yamllint disable-line rule:line-length
+Transformer: !new:speechbrain.lobes.models.transformer.TransformerASR.TransformerASR
     input_size: !ref <cnn_out_size>
     tgt_vocab: !ref <output_neurons>
     d_model: !ref <d_model>
@@ -165,12 +166,14 @@ phoneme_probe: !new:phoneme_probe_transformer.PhonemeProbe
   enc_size: !ref <d_model>
   enc_layers: !ref <num_encoder_layers>
 
-PhonemeMetric: !name:torchmetrics.classification.MulticlassAccuracy
-  num_classes: !ref <phone_outputs>
-  average: micro
-  ignore_index: 0
+PhonemeMetric: !name:speechbrain.utils.metric_stats.ErrorRateStats
 
-#phon_bin_metrics:
+#PhonemeMetric: !name:torchmetrics.classification.MulticlassAccuracy
+#  num_classes: !ref <phone_outputs>
+#  average: micro
+#  ignore_index: 0
+
+#phone_bin_metrics:
 #  ɑ̃: !new:torchmetrics.classification.BinaryF1Score
 #  ɔ̃: !new:torchmetrics.classification.BinaryF1Score
 #  ɛ̃: !new:torchmetrics.classification.BinaryF1Score
@@ -229,9 +232,9 @@ Adam: !name:torch.optim.AdamW
 log_softmax: !new:torch.nn.LogSoftmax
     dim: -1
 
-#ctc_cost: !name:speechbrain.nnet.losses.ctc_loss
-#    blank_index: !ref <blank_index>
-#    reduction: !ref <loss_reduction>
+ctc_cost: !name:speechbrain.nnet.losses.ctc_loss
+    blank_index: !ref <blank_index>
+    reduction: !ref <loss_reduction>
 
 #seq_cost: !name:speechbrain.nnet.losses.kldiv_loss
 #    label_smoothing: !ref <label_smoothing>

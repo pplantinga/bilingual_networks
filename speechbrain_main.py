@@ -32,7 +32,7 @@ class BilingualBrain(sb.Brain):
         """Computes the loss between predicted and actual word and phonmes."""
 
         # Losses expect time last
-        phon_out = predictions[0].transpose(1, 2)
+        phone_out = predictions[0].transpose(1, 2)
         word_out = predictions[1].transpose(1, 2)
 
         # Ignore target lengths, they should match the predictions by design
@@ -40,10 +40,10 @@ class BilingualBrain(sb.Brain):
 
         # Phones and words ignore empty frames, which have a label of "0"
         word_loss = cross_entropy(word_out, word_targets, ignore_index=0)
-        phon_loss = 0
+        phone_loss = 0
         if self.hparams.phone_feedback:
-            phon_targets, _ = batch.phon_targets
-            phon_loss = cross_entropy(phon_out, phon_targets, ignore_index=0)
+            phone_targets, _ = batch.phone_targets
+            phone_loss = cross_entropy(phone_out, phone_targets, ignore_index=0)
 
         if stage != sb.Stage.TRAIN:
             for lang in self.hparams.train_languages:
@@ -56,20 +56,20 @@ class BilingualBrain(sb.Brain):
                 )
 
                 if self.hparams.phone_feedback:
-                    self.hparams.phon_metrics[lang](
-                        phon_out[lang_mask], phon_targets[lang_mask]
+                    self.hparams.phone_metrics[lang](
+                        phone_out[lang_mask], phone_targets[lang_mask]
                     )
 
-            if hasattr(self.hparams, "phon_bin_metrics"):
-                predictions = phon_out.argmax(dim=1)
-                for phoneme, metric in self.hparams.phon_bin_metrics.items():
+            if hasattr(self.hparams, "phone_bin_metrics"):
+                predictions = phone_out.argmax(dim=1)
+                for phoneme, metric in self.hparams.phone_bin_metrics.items():
                     metric.to(self.device)
-                    phoneme_index = self.hparams.phon_encoder.encode_label_torch(phoneme).item()
+                    phoneme_index = self.hparams.phone_encoder.encode_label_torch(phoneme).item()
                     bin_preds = predictions == phoneme_index
-                    bin_targs = phon_targets == phoneme_index
+                    bin_targs = phone_targets == phoneme_index
                     metric(bin_preds, bin_targs)
 
-        return phon_loss + word_loss
+        return phone_loss + word_loss
 
     def on_fit_start(self):
         super().on_fit_start()
@@ -112,21 +112,21 @@ class BilingualBrain(sb.Brain):
             })
             if self.hparams.phone_feedback:
                 stats.update({
-                    f"phon_{lang}_acc": compute_metric(self.hparams.phon_metrics[lang])
+                    f"phone_{lang}_acc": compute_metric(self.hparams.phone_metrics[lang])
                     for lang in self.hparams.train_languages
                 })
 
                 # Save confusions to file
-                #confusions = self.hparams.phon_confusion.compute().cpu()
+                #confusions = self.hparams.phone_confusion.compute().cpu()
                 #if stage == sb.Stage.VALID:
                 #    torch.save(confusions, self.hparams.confusions_valid + "." + lang)
                 #else:
                 #    torch.save(confusions, self.hparams.confusions_test + "." + lang)
 
-            if hasattr(self.hparams, "phon_bin_metrics"):
+            if hasattr(self.hparams, "phone_bin_metrics"):
                 stats.update({
-                    f"phon_{p}_f1": compute_metric(self.hparams.phon_bin_metrics[p])
-                    for p in self.hparams.phon_bin_metrics
+                    f"phone_{p}_f1": compute_metric(self.hparams.phone_bin_metrics[p])
+                    for p in self.hparams.phone_bin_metrics
                 })
 
         if stage == sb.Stage.VALID:

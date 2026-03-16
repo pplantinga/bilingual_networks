@@ -96,6 +96,9 @@ class PhonemeEncoder(sb.dataio.encoder.CategoricalEncoder):
             label = self.ipa2hlg[label]
         return super().encode_label(label, allow_unk)
 
+def exist_and_true(hparams, key):
+    return key in hparams and hparams[key]
+
 
 def make_encoders(hparams):
     if "word_feedback" not in hparams or hparams["word_feedback"]:
@@ -112,19 +115,19 @@ def make_encoders(hparams):
         logger.info(f"# of (language-dependent) words: {len(hparams['word_encoder'].ind2lab)}")
 
     # Iterate language phone files to add all symbols to encoders
-    if hparams["phone_feedback"]:
+    if exist_and_true(hparams, "phone_feedback") or exist_and_true(hparams, "phone_sequence"):
         ipa2hlg = {}
-        for lang, phon_file in hparams["phon_files"].items():
-            ipa2hlg.update(mapping_from_csv(phon_file, "ipa", "homolog"))
+        for lang, phone_file in hparams["phone_files"].items():
+            ipa2hlg.update(mapping_from_csv(phone_file, "ipa", "homolog"))
 
         # Index 0 is silence in all cases and can be safely ignored.
         # Montreal Forced Aligner uses "spn" as a sort of "unknown speech noise"
         # "spn" and "sil" are mapped to this unk label and ignored
-        hparams["phon_encoder"] = PhonemeEncoder(ipa2hlg)
-        hparams["phon_encoder"].expect_len(hparams["phone_outputs"])
-        hparams["phon_encoder"].add_unk()
-        hparams["phon_encoder"].update_from_iterable(sorted(set(ipa2hlg.values())))
-        logger.info(f"# of (language-independent) phonemes: {len(hparams['phon_encoder'].ind2lab)}")
+        hparams["phone_encoder"] = PhonemeEncoder(ipa2hlg)
+        hparams["phone_encoder"].expect_len(hparams["phone_outputs"])
+        hparams["phone_encoder"].add_unk()
+        hparams["phone_encoder"].update_from_iterable(sorted(set(ipa2hlg.values())))
+        logger.info(f"# of (language-independent) phonemes: {len(hparams['phone_encoder'].ind2lab)}")
 
 
 @torch.no_grad()
@@ -166,6 +169,11 @@ def make_datasets(hparams):
 
         return array
 
+    def extract_phone_sequence(grid, encoder):
+        """Convert a grid to a list of phones"""
+        phones = [i.mark for i in grid.getList("phones")[0]]
+        return encoder.encode_sequence_torch(phones)
+
     @takes("path")
     @provides("wav_path", "grid_path")
     def path_pipeline(path):
@@ -175,8 +183,8 @@ def make_datasets(hparams):
 
     @takes("wav_path")
     @provides("signal", "crop_start", "crop_len")
-    def train_audio_pipeline(wav_path):
-        """Training pipeline returns only a chunk for training efficiency"""
+    def crop_audio_pipeline(wav_path):
+        """Pipeline returns only a chunk for training efficiency"""
         audio = load_audio_and_resample(wav_path, hparams["fs"])
 
         # Select random crop of the audio
@@ -192,8 +200,8 @@ def make_datasets(hparams):
 
     @takes("wav_path")
     @provides("signal", "crop_start", "crop_len")
-    def test_audio_pipeline(wav_path):
-        """Testing pipeline returns full audio starting from 0."""
+    def full_audio_pipeline(wav_path):
+        """Pipeline returns full audio starting from 0."""
         audio = load_audio_and_resample(wav_path, hparams["fs"])
         crop_len = len(audio) // df + 1
         return audio, 0, crop_len
@@ -205,11 +213,12 @@ def make_datasets(hparams):
         return textgrid.TextGrid.fromFile(grid_path)
 
     @takes("grid", "crop_start", "crop_len")
-    @provides("phon_targets")
-    def phon_pipeline(grid, crop_start, crop_len):
+    @provides("phone_sequence", "phone_targets")
+    def phone_pipeline(grid, crop_start, crop_len):
         """Create time-aligned phoneme targets based on textgrid."""
-        return grid2array(
-            grid, "phones", crop_start, crop_len, hparams["phon_encoder"], postfix=""
+        yield extract_phone_sequence(grid, hparams["phone_encoder"])
+        yield grid2array(
+            grid, "phones", crop_start, crop_len, hparams["phone_encoder"], postfix=""
         )
 
     @takes("lang", "grid", "crop_start", "crop_len")
@@ -234,9 +243,12 @@ def make_datasets(hparams):
     if "word_feedback" not in hparams or hparams["word_feedback"]:
         pipelines.append(word_pipeline)
         output_keys.append("word_targets")
-    if hparams["phone_feedback"]:
-        pipelines.append(phon_pipeline)
-        output_keys.append("phon_targets")
+    if exist_and_true(hparams, "phone_feedback"):
+        pipelines.append(phone_pipeline)
+        output_keys.append("phone_targets")
+    if exist_and_true(hparams, "phone_sequence"):
+        pipelines.append(phone_pipeline)
+        output_keys.append("phone_sequence")
     for lang in hparams["train_languages"]:
         pipelines.append(create_mask_pipeline(lang))
         output_keys.append(f"{lang}_mask")
@@ -248,16 +260,21 @@ def make_datasets(hparams):
         for lang in hparams["train_languages"]:
             data.update(json.load(open(hparams[f"{stage}_{lang}_manifest"])))
 
+        # Only in training with cropping do we need a separate pipeline
+        if stage == "train" and hparams["random_crop_len"] > 0:
+            pipelines.append(crop_audio_pipeline)
+        else:
+            pipelines.append(full_audio_pipeline)
+
         # Create dataset from components defined above
-        audio_pipeline = train_audio_pipeline if stage == "train" else test_audio_pipeline
         datasets[stage] = sb.dataio.dataset.DynamicItemDataset(
-            data, pipelines + [audio_pipeline], output_keys
+            data, pipelines, output_keys
         )
 
         if stage in ["valid", "test"]:
             # Long utterances cause OOM on validation, limit max length
             datasets[stage] = datasets[stage].filtered_sorted(
-                key_max_value={"duration": 10.0},
+                key_max_value={"duration": 3.0},
                 #key_test={"lang": lambda x: x == "en"},
                 sort_key="duration",
             )

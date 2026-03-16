@@ -13,7 +13,7 @@ import polars
 import textgrid
 import torchaudio
 from hyperpyyaml import load_hyperpyyaml
-from torch.nn.functional import cross_entropy
+#from torch.nn.functional import cross_entropy
 
 import data_sb
 import speechbrain as sb
@@ -22,6 +22,7 @@ from speechbrain.utils.data_utils import undo_padding
 from speechbrain.utils.distributed import run_on_main
 from speechbrain.utils.logger import get_logger
 from speechbrain.utils.data_pipeline import takes, provides
+from speechbrain.decoders.ctc import ctc_greedy_decode
 
 
 logger = get_logger(__name__)
@@ -31,16 +32,20 @@ class PhonemeProbe(torch.nn.Module):
     """Create a probe for each hidden representation."""
     def __init__(self, phoneme_count, cnn_size, enc_size, enc_layers):
         super().__init__()
-        self.cnn_probe = sb.nnet.linear.Linear(
-            n_neurons=phoneme_count, input_size=cnn_size, combine_dims=True
-        )
+        self.cnn_probe = torch.nn.Linear(cnn_size, phoneme_count)
         self.t_probes = torch.nn.ModuleList()
         for _ in range(enc_layers):
             self.t_probes.append(torch.nn.Linear(enc_size, phoneme_count))
+        #self.cnn_probe = torch.nn.GRU(cnn_size, phoneme_count, batch_first=True)
+        #self.t_probes = torch.nn.ModuleList()
+        #for _ in range(enc_layers):
+        #    self.t_probes.append(torch.nn.GRU(enc_size, phoneme_count, batch_first=True))
 
     def forward(self, cnn_output, hidden_layers):
         """Apply probe to both cnn and hidden layers"""
-        probes = [self.cnn_probe(cnn_output)]
+        batch, time, _, _ = cnn_output.shape
+        cnn_out_flat = cnn_output.view(batch, time, -1)
+        probes = [self.cnn_probe(cnn_out_flat)]
 
         # Hidden layers includes the input, but we handle that separately above
         # This is the reason for the "+1" on the hidden layer index.
@@ -69,39 +74,50 @@ class ProbeBrain(sb.core.Brain):
     def compute_objectives(self, predictions, batch, stage):
         """Computes the phoneme loss against all probes."""
 
+        y, y_lens = batch.phone_sequence
+        _, wav_lens = batch.signal
+
         loss = 0
         for i, p in enumerate(predictions):
+            p = self.hparams.log_softmax(p)
             # Loss and metrics both expect shape [batch, classes, ...]
             # After transpose, shape is [batch, phonemes, time]
-            p = p.transpose(1, 2)
-            loss += cross_entropy(p, batch.phon_targets[0], ignore_index=0)
+            #p = p.transpose(1, 2)
+            #loss += cross_entropy(p, batch.phone_targets[0], ignore_index=0)
+            loss += self.hparams.ctc_cost(p, y, wav_lens, y_lens)
 
             if stage == sb.Stage.VALID:
-                self.phoneme_metrics[i](p, batch.phon_targets[0])
+                predicted = ctc_greedy_decode(p, wav_lens, blank_id=self.hparams.blank_index)
+                self.phoneme_metrics[i].append(batch.id, predicted, y)
 
         return loss
 
-    #def on_stage_start(self, stage, epoch):
-    #    """Gets called at the beginning of each epoch"""
-    #    if stage != sb.Stage.TRAIN:
-    #        for i in range(self.hparams.enc_layers):
-    #            self.phon_metrics
+    def on_stage_start(self, stage, epoch):
+        """Gets called at the beginning of each epoch"""
+        if stage != sb.Stage.TRAIN:
+            self.phoneme_metrics = [
+                self.hparams.PhonemeMetric()
+                for i in range(self.hparams.num_encoder_layers + 1)
+            ]
 
     def on_fit_start(self):
         super().on_fit_start()
         self.metrics_log = []
-        self.phoneme_metrics = [
-            self.hparams.PhonemeMetric().to(self.device)
-            for i in range(self.hparams.num_encoder_layers + 1)
-        ]
+        #self.phoneme_metrics = [
+        #    self.hparams.PhonemeMetric().to(self.device)
+        #    for i in range(self.hparams.num_encoder_layers + 1)
+        #]
 
     def on_stage_end(self, stage, stage_loss, epoch):
         """Gets called at the end of a epoch."""
         
+        #def compute_metric(metric):
+        #    score = round(metric.compute().item(), 5)
+        #    metric.reset()
+        #    return score
+
         def compute_metric(metric):
-            score = round(metric.compute().item(), 5)
-            metric.reset()
-            return score
+            return round(metric.summarize("WER"), 3)
 
         if stage == sb.Stage.VALID:
             row = {
@@ -109,6 +125,7 @@ class ProbeBrain(sb.core.Brain):
                 for i, m in enumerate(self.phoneme_metrics)
             }
             row["epoch"] = epoch
+            print("Validation loss", stage_loss)
             print(row)
 
             self.metrics_log.append(row)

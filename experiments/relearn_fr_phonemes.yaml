@@ -29,7 +29,7 @@ train_languages: ["fr"]
 word_files:
   fr: data/words_fr.csv
   en: data/words_en.csv
-phon_files:
+phone_files:
   fr: data/phonemes_fr.csv
   en: data/phonemes_en.csv
 test_portion: 0.02
@@ -120,24 +120,24 @@ model: !new:word_phone_model.WordPhoneModel
   rnn_dropout: 0.2
   phone_bottleneck: False
 
-phon_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
+phone_fr_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
   average: micro
   ignore_index: 0
 
-phon_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
+phone_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <phone_outputs>
   average: micro
   ignore_index: 0
 
-phon_bin_metrics:
+phone_bin_metrics:
   ɑ̃: !new:torchmetrics.classification.BinaryF1Score
   ɔ̃: !new:torchmetrics.classification.BinaryF1Score
   ɛ̃: !new:torchmetrics.classification.BinaryF1Score
 
-phon_metrics:
-  fr: !ref <phon_fr_metric>
-  en: !ref <phon_en_metric>
+phone_metrics:
+  fr: !ref <phone_fr_metric>
+  en: !ref <phone_en_metric>
 
 word_en_metric: !new:torchmetrics.classification.MulticlassAccuracy
   num_classes: !ref <word_outputs>
@@ -153,27 +153,27 @@ word_metrics:
   fr: !ref <word_fr_metric>
   en: !ref <word_en_metric>
 
-phon_fr_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
+phone_fr_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
   num_classes: !ref <phone_outputs>
   ignore_index: 0
 
-phon_en_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
+phone_en_confusion: !new:torchmetrics.classification.MulticlassConfusionMatrix
   num_classes: !ref <phone_outputs>
   ignore_index: 0
 
-phon_confusions:
-  fr: !ref <phon_fr_confusion>
-  en: !ref <phon_en_confusion>
+phone_confusions:
+  fr: !ref <phone_fr_confusion>
+  en: !ref <phone_en_confusion>
 
 # Add metrics to modules cuz they complain if they're not on the model device
 modules:
   model: !ref <model>
-  phon_fr_metric: !ref <phon_fr_metric>
-  phon_en_metric: !ref <phon_en_metric>
+  phone_fr_metric: !ref <phone_fr_metric>
+  phone_en_metric: !ref <phone_en_metric>
   word_fr_metric: !ref <word_fr_metric>
   word_en_metric: !ref <word_en_metric>
-  phon_fr_confusion: !ref <phon_fr_confusion>
-  phon_en_confusion: !ref <phon_en_confusion>
+  phone_fr_confusion: !ref <phone_fr_confusion>
+  phone_en_confusion: !ref <phone_en_confusion>
 
 
 pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
