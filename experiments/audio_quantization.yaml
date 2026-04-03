@@ -1,0 +1,97 @@
+# Recipe for quantizing audio into discrete tokens
+# Author: Peter Plantinga
+seed: 3421
+__set_seed: !apply:speechbrain.utils.seed_everything [!ref <seed>]
+output_folder: !ref results/quantizer_en/<seed>
+output_wer_folder: !ref <output_folder>/
+save_folder: !ref <output_folder>/save
+train_log: !ref <output_folder>/train_log.txt
+
+# Data files
+#pretrained_path: !PLACEHOLDER
+data_folder: data
+train_fr_manifest: manifests/train_fr.json
+valid_fr_manifest: manifests/valid_fr.json
+test_fr_manifest: manifests/test_fr.json
+train_en_manifest: manifests/train_en.json
+valid_en_manifest: manifests/valid_en.json
+test_en_manifest: manifests/test_en.json
+train_de_manifest: manifests/train_de.json
+valid_de_manifest: manifests/valid_de.json
+test_de_manifest: manifests/test_de.json
+train_languages: ["en"]
+test_portion: 0.02
+
+#ckpt_interval_minutes: 15 # save checkpoint every N min
+
+####################### Training Parameters ####################################
+number_of_epochs: 20
+num_workers: 4
+
+# Feature parameters
+sample_rate: 16000
+n_fft: 400
+n_mels: 80
+n_mfcc: 20
+
+train_dataloader_opts:
+    num_workers: !ref <num_workers>
+    batch_size: 50
+    drop_last: True
+
+valid_dataloader_opts:
+    num_workers: !ref <num_workers>
+    batch_size: 50
+
+test_dataloader_opts:
+    num_workers: !ref <num_workers>
+    batch_size: 50
+
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+    limit: !ref <number_of_epochs>
+
+train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
+    save_file: !ref <output_folder>/train_log.txt
+    precision: 3
+
+normalize: !new:speechbrain.processing.features.InputNormalization
+    norm_type: sentence
+
+compute_features: !new:speechbrain.lobes.features.MFCC
+    deltas: True
+    context: False
+    sample_rate: !ref <sample_rate>
+    n_fft: !ref <n_fft>
+    n_mels: !ref <n_mels>
+    n_mfcc: !ref <n_mfcc>
+
+# Quantizer parameters
+n_clusters: 1000
+init: k-means++
+max_iter: 100 
+kmeans_batch_size: 10000  # Should be >= num_clusters
+tol: 0.0 
+max_no_improvement: 100 
+n_init: 20
+reassignment_ratio: 0.01
+
+quantizer: !new:speechbrain.integrations.audio_tokenizers.kmeans.MiniBatchKMeansSklearn
+    n_clusters: !ref <n_clusters>
+    init: !ref <init>
+    max_iter: !ref <max_iter>
+    batch_size: !ref <kmeans_batch_size>
+    tol: !ref <tol>
+    max_no_improvement: !ref <max_no_improvement>
+    n_init: !ref <n_init>
+    reassignment_ratio: !ref <reassignment_ratio>
+    random_state: !ref <seed>
+    verbose: 1
+    compute_labels: True
+    init_size: null
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+    checkpoints_dir: !ref <save_folder>
+    recoverables:
+        normalizer: !ref <normalize>
+        counter: !ref <epoch_counter>
+        quantizer: !ref <quantizer>
