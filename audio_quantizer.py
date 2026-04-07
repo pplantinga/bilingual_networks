@@ -43,11 +43,16 @@ class QuantizerBrain(sb.core.Brain):
     @torch.no_grad()
     def compute_forward(self, batch, stage):
         """Simply compute features used in clustering"""
+        batch = batch.to(self.device)
         audio, audio_len = batch.signal
-        features = self.hparams.compute_features(audio)
-        features = self.hparams.normalize(features, audio_len)
-        features = flatten_no_padding(features, audio_len)
-        return features
+        layers = self.hparams.compute_features(audio)
+        # layers [0] is CNN outputs, layers [N] is output of Nth transformer layer
+        # Pool layers to go from 2x reduction to 4x reduction == 40ms per frame
+        features = self.hparams.pool1d(layers[1])
+        # this flatten function expects relative length, total for whisper is always 30s
+        # divide the duration (length in seconds) by the total length to get relative
+        features = flatten_no_padding(features, batch.duration / 30)
+        return features.cpu()
 
     @torch.no_grad()
     def compute_objectives(self, features, batch, stage):
@@ -121,9 +126,7 @@ def dataio_prepare(hparams):
         wav_path = base.with_suffix(".mp3")
         return data_sb.load_audio_and_resample(wav_path, hparams["sample_rate"])
 
-    # Define datasets before the text pipeline so that
-    # we can use it to load all the text and write to file
-    # for training the tokenizer then used in the text pipeline
+    # No label needed, just audio and duration
     datasets = {}
     lang = hparams["train_languages"][0]
     pipelines = [audio_pipeline]
@@ -131,7 +134,7 @@ def dataio_prepare(hparams):
         datasets[dataset] = sb.dataio.dataset.DynamicItemDataset.from_json(
             hparams[f"{dataset}_{lang}_manifest"],
             dynamic_items=pipelines,
-            output_keys=["signal"],
+            output_keys=["signal", "duration"],
         )
 
     return datasets
@@ -155,6 +158,7 @@ if __name__ == "__main__":
     # Trainer initialization
     quantizer_brain = QuantizerBrain(
         hparams=hparams,
+        modules=hparams["modules"],
         run_opts=run_opts,
         checkpointer=hparams["checkpointer"],
     )
