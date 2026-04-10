@@ -13,7 +13,7 @@ import polars
 import textgrid
 import torchaudio
 from hyperpyyaml import load_hyperpyyaml
-#from torch.nn.functional import cross_entropy
+from torch.nn.functional import cross_entropy
 
 import data_sb
 import speechbrain as sb
@@ -74,21 +74,24 @@ class ProbeBrain(sb.core.Brain):
     def compute_objectives(self, predictions, batch, stage):
         """Computes the phoneme loss against all probes."""
 
-        y, y_lens = batch.phone_sequence
+        #y, y_lens = batch.phone_sequence
         _, wav_lens = batch.signal
 
         loss = 0
         for i, p in enumerate(predictions):
-            p = self.hparams.log_softmax(p)
+            #p = self.hparams.log_softmax(p)
+            #loss += self.hparams.ctc_cost(p, y, wav_lens, y_lens)
+
             # Loss and metrics both expect shape [batch, classes, ...]
             # After transpose, shape is [batch, phonemes, time]
-            #p = p.transpose(1, 2)
-            #loss += cross_entropy(p, batch.phone_targets[0], ignore_index=0)
-            loss += self.hparams.ctc_cost(p, y, wav_lens, y_lens)
+            p = p.transpose(1, 2)
+            loss += cross_entropy(p, batch.phone_targets[0], ignore_index=0)
 
             if stage == sb.Stage.VALID:
-                predicted = ctc_greedy_decode(p, wav_lens, blank_id=self.hparams.blank_index)
-                self.phoneme_metrics[i].append(batch.id, predicted, y)
+            #    predicted = ctc_greedy_decode(p, wav_lens, blank_id=self.hparams.blank_index)
+            #    self.phoneme_metrics[i].append(batch.id, predicted, y)
+
+                self.phoneme_metrics[i](p, batch.phone_targets[0])
 
         return loss
 
@@ -96,28 +99,28 @@ class ProbeBrain(sb.core.Brain):
         """Gets called at the beginning of each epoch"""
         if stage != sb.Stage.TRAIN:
             self.phoneme_metrics = [
-                self.hparams.PhonemeMetric()
+                self.hparams.PhonemeMetric().to(self.device)
                 for i in range(self.hparams.num_encoder_layers + 1)
             ]
 
     def on_fit_start(self):
         super().on_fit_start()
         self.metrics_log = []
-        #self.phoneme_metrics = [
-        #    self.hparams.PhonemeMetric().to(self.device)
-        #    for i in range(self.hparams.num_encoder_layers + 1)
-        #]
+    #    self.phoneme_metrics = [
+    #        self.hparams.PhonemeMetric().to(self.device)
+    #        for i in range(self.hparams.num_encoder_layers + 1)
+    #    ]
 
     def on_stage_end(self, stage, stage_loss, epoch):
         """Gets called at the end of a epoch."""
         
-        #def compute_metric(metric):
-        #    score = round(metric.compute().item(), 5)
-        #    metric.reset()
-        #    return score
-
         def compute_metric(metric):
-            return round(metric.summarize("WER"), 3)
+            score = round(metric.compute().item(), 5)
+            metric.reset()
+            return score
+
+        #def compute_metric(metric):
+        #    return round(metric.summarize("WER"), 3)
 
         if stage == sb.Stage.VALID:
             row = {
