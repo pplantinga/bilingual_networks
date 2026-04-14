@@ -126,7 +126,8 @@ def make_encoders(hparams):
         # Montreal Forced Aligner uses "spn" as a sort of "unknown speech noise"
         # "spn" and "sil" are mapped to this unk label and ignored
         hparams["phone_encoder"] = PhonemeEncoder(ipa2hlg)
-        hparams["phone_encoder"].expect_len(hparams["phone_outputs"])
+        #hparams["phone_encoder"].expect_len(hparams["phone_outputs"])
+        hparams["phone_encoder"].ignore_len()
         hparams["phone_encoder"].add_unk()
         hparams["phone_encoder"].update_from_iterable(sorted(set(ipa2hlg.values())))
         logger.info(f"# of (language-independent) phonemes: {len(hparams['phone_encoder'].ind2lab)}")
@@ -150,6 +151,7 @@ def load_audio_and_resample(wav, target_sr=16000):
     return audio
 
 
+
 def make_datasets(hparams):
     """Create data pipelines for all stages, and label encoders."""
 
@@ -160,16 +162,40 @@ def make_datasets(hparams):
 
     def grid2array(grid, field, crop_start, crop_len, encoder, postfix):
         """Convert a list from an alignment grid to an array suitable
-        for use as a target tensor."""
-        array = np.zeros(crop_len, dtype=int)
+        for use as a target tensor. Each phoneme is guaranteed at least
+        one frame; the total length may slightly exceed crop_len if
+        short phonemes need expansion."""
+        chunks = []
+        cursor = 0
         for name, start, stop in convert_to_tuples(grid.getList(field)[0]):
             start_idx = max(int(start * target_rate) - crop_start, 0)
-            stop_idx = min(int(stop * target_rate) - crop_start, crop_len)
-            if stop_idx > 0 and start_idx < crop_len:
-                encoded = encoder.encode_label_torch(name + postfix).item()
-                array[start_idx:stop_idx] = encoded
+            stop_idx  = max(int(stop  * target_rate) - crop_start, start_idx + 1)
 
-        return array
+            if stop_idx <= 0 or start_idx >= crop_len:
+                continue
+
+            encoded = encoder.encode_label_torch(name + postfix).item()
+            actual_start = max(start_idx, cursor)
+            actual_stop  = max(stop_idx, actual_start + 1)
+            chunks.append(np.full(actual_stop - actual_start, encoded, dtype=int))
+            cursor = actual_stop
+
+        return np.concatenate(chunks) if chunks else np.zeros(0, dtype=int)
+
+    #def grid2array(grid, field, crop_start, crop_len, encoder, postfix):
+    #    """Convert a list from an alignment grid to an array suitable
+    #    for use as a target tensor."""
+    #    array = np.zeros(crop_len, dtype=int)
+    #    for name, start, stop in convert_to_tuples(grid.getList(field)[0]):
+    #        start_idx = max(int(start * target_rate) - crop_start, 0)
+    #        stop_idx = min(int(stop * target_rate) - crop_start, crop_len)
+    #        if start_idx == stop_idx:
+    #            print(f"Start index: {start_idx} and Stop index: {stop_idx}")
+    #            print(f"So this phoneme: {name} is excluded")
+    #        if stop_idx > 0 and start_idx < crop_len:
+    #            encoded = encoder.encode_label_torch(name + postfix).item()
+    #            array[start_idx:stop_idx] = encoded
+    #    return array
 
     def extract_phone_sequence(grid, encoder):
         """Convert a grid to a list of phones"""
@@ -241,7 +267,7 @@ def make_datasets(hparams):
 
     # Glom together all the pipelines and output keys
     pipelines = [path_pipeline, grid_pipeline]
-    output_keys = ["id", "lang", "signal", "lang"]
+    output_keys = ["id", "lang", "signal"]
     if "word_feedback" not in hparams or hparams["word_feedback"]:
         pipelines.append(word_pipeline)
         output_keys.append("word_targets")
@@ -276,7 +302,7 @@ def make_datasets(hparams):
         if stage in ["valid", "test"]:
             # Long utterances cause OOM on validation, limit max length
             datasets[stage] = datasets[stage].filtered_sorted(
-                key_max_value={"duration": 3.0},
+                key_max_value={"duration": 10.0},
                 #key_test={"lang": lambda x: x == "en"},
                 sort_key="duration",
             )
