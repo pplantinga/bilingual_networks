@@ -1,56 +1,48 @@
-cmu,ipa,homolog,v_or_c,sonority,manner,placerough,place,voicing,position,height,voweltype,voicingpair
-sil,,sil,,,,,,,,,,
-d,d,D,consonant,1: obstruents,plosive,,dental/alveolar,voiced,,,,t
-i,iː,IY,vowel,3: vowel,vowel,,,,front,close,monophthong,
-S,ʃ,SH,consonant,1: obstruents,fricative,,postalveolar/palatal,voiceless,,,,ʃ
-p,p,P,consonant,1: obstruents,plosive,,labial,voiceless,,,,p
-),ɛː,),vowel,3: vowel,vowel,,,,front,mid,monophthong,
-@,ə,AH,vowel,3: vowel,vowel,,,,central,mid,monophthong,
-r,r,R,consonant,2: nasal/approximant,approximant,,postalveolar/palatal,,,,,
-v,v,V,consonant,1: obstruents,fricative,,labial,voiced,,,,f
-e,eː,EE,vowel,3: vowel,vowel,,,,front,mid,monophthong,
-n,n,N,consonant,2: nasal/approximant,nasal,,dental/alveolar,,,,,
-z,z,Z,consonant,1: obstruents,fricative,,dental/alveolar,voiced,,,,s
-I,ɪ,IH,vowel,3: vowel,vowel,,,,front,close,monophthong,
-x,x,X,consonant,1: obstruents,fricative,,postalveolar/palatal,voiceless,,,,
-E,ɛ,EH,vowel,3: vowel,vowel,,,,front,mid,monophthong,
-l,l,L,consonant,2: nasal/approximant,approximant,,dental/alveolar,,,,,
-W,aɪ̯,AI,vowel,3: vowel,vowel,,,,,,diphtong,
-t,t,T,consonant,1: obstruents,plosive,,dental/alveolar,voiceless,,,,t
-m,m,M,consonant,2: nasal/approximant,nasal,,labial,,,,,
-g,ɡ,G,consonant,1: obstruents,plosive,,velar/uvular,voiced,,,,k
-s,s,S,consonant,1: obstruents,fricative,,dental/alveolar,voiceless,,,,s
-f,f,F,consonant,1: obstruents,fricative,,labial,voiceless,,,,f
-U,ʊ,UH,vowel,3: vowel,vowel,,,,back,close,monophthong,
-sp,,sp,,,,,,,,,,
-h,h,HH,consonant,1: obstruents,fricative,,glottal,voiceless,,,,
-a,aː,AA,vowel,3: vowel,vowel,,,,central,open,monophthong,
-b,b,B,consonant,1: obstruents,plosive,,labial,voiced,,,,p
-&,a,&,vowel,3: vowel,vowel,,,,central,open,monophthong,
-N,ŋ,NG,consonant,2: nasal/approximant,nasal,,velar/uvular,,,,,
-k,k,K,consonant,1: obstruents,plosive,,velar/uvular,voiceless,,,,k
-j,j,Y,consonant,2: nasal/approximant,approximant,,postalveolar/palatal,,,,,
-o,oː,OO,vowel,3: vowel,vowel,,,,back,mid,monophthong,
-Y,ʏ,Y,vowel,3: vowel,vowel,,,,front,close,monophthong,
-y,yː,y,vowel,3: vowel,vowel,,,,front,close,monophthong,
-B,aʊ̯,AU,vowel,3: vowel,vowel,,,,,,diphtong,
-=,ts,=,consonant,1: obstruents,affricate,,dental/alveolar,voiceless,,,,
-u,uː,UW,vowel,3: vowel,vowel,,,,back,close,monophthong,
-O,ɔ,AO,vowel,3: vowel,vowel,,,,back,mid,monophthong,
-|,øː,|,vowel,3: vowel,vowel,,,,front,mid,monophthong,
-c,,cinq,,,,,,,,,,
-Z,ʒ,ZH,consonant,1: obstruents,fricative,,postalveolar/palatal,voiced,,,,ʃ
-eins,,EY,,,,,,,,,,
-X,ɔʏ̯,OI,vowel,3: vowel,vowel,,,,,,diphtong,
-drei,,ER,,,,,,,,,,
-/,œ,/,vowel,3: vowel,vowel,,,,front,mid,monophthong,
-+,pf,PF,consonant,1: obstruents,affricate,,labial,voiceless,,,,
-J,tʃ,CH,consonant,1: obstruents,affricate,,postalveolar/palatal,voiceless,,,,
-~,,ons,,,,,,,,,,
-q,,@,,,,,,,,,,
-{,,AE,,,,,,,,,,
-sechs,,AW,,,,,,,,,,
-spn,,spn,,,,,,,,,,
-null,,cinq,,,,,,,,,,
-_,,EY,,,,,,,,,,
-vier,,OY,,,,,,,,,,
+ipa,homolog,v_or_c,sonority,manner,placerough,place,voicing,position,height,voweltype,voicingpair
+a,a,vowel,3: vowel,vowel,,,,central,open,monophthong,
+ɔʏ,aɪ,vowel,3: vowel,vowel,,,,,,diphtong,
+aj,aɪ,vowel,3: vowel,vowel,,,,,,diphtong,
+aw,aw,vowel,3: vowel,vowel,,,,,,diphtong,
+ɔ,ɔ,vowel,3: vowel,vowel,,,,back,open,monophthong,
+ɒ,ɔ,vowel,3: vowel,vowel,,,,back,open,monophthong,
+ø,ø,vowel,3: vowel,vowel,,,,front,mid,monophthong,
+i,i,vowel,3: vowel,vowel,,,,front,close,monophthong,
+ɛ,ɛ,vowel,3: vowel,vowel,,,,front,mid,monophthong,
+ə,ə,vowel,3: vowel,vowel,,,,central,mid,monophthong,
+e,e,vowel,3: vowel,vowel,,,,front,mid,monophthong,
+ʁ,r,consonant,2: nasal/approximant,approximant,,postalveolar/palatal,,,,,
+v,v,consonant,1: obstruents,fricative,,labial,voiced,,,,f
+l,l,consonant,2: nasal/approximant,approximant,,dental/alveolar,,,,,
+m,m,consonant,2: nasal/approximant,nasal,,labial,,,,,
+n,n,consonant,2: nasal/approximant,nasal,,dental/alveolar,,,,,
+ŋ,ŋ,consonant,2: nasal/approximant,nasal,,velar/uvular,,,,,
+ɲ,ŋ,consonant,2: nasal/approximant,nasal,,postalveolar/palatal,voiced,,,,
+z,z,consonant,1: obstruents,fricative,,dental/alveolar,voiced,,,,s
+x,x,consonant,1: obstruents,fricative,,postalveolar/palatal,voiceless,,,,
+t,t,consonant,1: obstruents,plosive,,dental/alveolar,voiceless,,,,t
+ɡ,ɡ,consonant,1: obstruents,plosive,,velar/uvular,voiced,,,,k
+ɟ,ɡ,consonant,1: obstruents,plosive,dorsal,velar/uvular,voiced,,,,k
+f,f,consonant,1: obstruents,fricative,,labial,voiceless,,,,f
+h,h,consonant,1: obstruents,fricative,,glottal,voiceless,,,,
+p,p,consonant,1: obstruents,plosive,,labial,voiceless,,,,p
+pf,p,consonant,1: obstruents,affricate,,labial,voiceless,,,,
+b,b,consonant,1: obstruents,plosive,,labial,voiced,,,,p
+k,k,consonant,1: obstruents,plosive,,velar/uvular,voiceless,,,,k
+c,k,consonant,1: obstruents,plosive,dorsal,velar/uvular,voiceless,,,,k
+ç,x,consonant,1: obstruents,plosive,dorsal,velar/uvular,voiceless,,,,k
+x,x,consonant,1: obstruents,plosive,dorsal,velar/uvular,voiceless,,,,k
+j,j,consonant,2: nasal/approximant,approximant,,postalveolar/palatal,,,,,
+ʊ,ʊ,vowel,3: vowel,vowel,,,,back,close,monophthong,
+o,o,vowel,3: vowel,vowel,,,,back,mid,monophthong,
+ɪ,ɪ,vowel,3: vowel,vowel,,,,front,close,monophthong,
+ʏ,ɪ,vowel,3: vowel,vowel,,,,front,close,monophthong,
+y,y,vowel,3: vowel,vowel,,,,front,close,monophthong,
+u,u,vowel,3: vowel,vowel,,,,back,close,monophthong,
+œ,œ,vowel,3: vowel,vowel,,,,front,mid,monophthong,
+d,d,consonant,1: obstruents,plosive,,dental/alveolar,voiced,,,,t
+ʒ,ʒ,consonant,1: obstruents,fricative,,postalveolar/palatal,voiced,,,,ʃ
+ts,t,consonant,1: obstruents,affricate,,dental/alveolar,voiceless,,,,
+tʃ,tʃ,consonant,1: obstruents,affricate,,postalveolar/palatal,voiceless,,,,
+ʃ,ʃ,consonant,1: obstruents,fricative,,postalveolar/palatal,voiceless,,,,ʃ
+s,s,consonant,1: obstruents,fricative,,dental/alveolar,voiceless,,,,s
+z,z,consonant,1: obstruents,fricative,coronal,dental/alveolar,voiced,,,,s
