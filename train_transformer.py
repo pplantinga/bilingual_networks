@@ -41,10 +41,6 @@ class PostAffineAdapter(torch.nn.Module):
         self.post_affine = torch.nn.Linear(size, size)
         self.replace_layer = replace_layer
 
-        # Start with layer frozen. Unfreeze after adaptation
-        for p in replace_layer:
-            p.requires_grad = False
-
     def forward(self, x):
         """Apply affine layer after selected layer"""
         x = self.replace_layer(x)
@@ -284,6 +280,11 @@ def dataio_prepare(hparams):
         datasets[dataset] = sb.dataio.dataset.DynamicItemDataset.from_json(
             hparams[f"{dataset}_{lang}_manifest"], dynamic_items=pipelines
         )
+    if "partial_load" in hparams:
+        datasets["train_bridge"] = sb.dataio.dataset.DynamicItemDataset.from_json(
+            hparams["partial_load"]["bridge_manifest"], dynamic_items=pipelines
+        )
+
 
     # Write words to file
     text_file = pathlib.Path(hparams[f"{lang}_combined"])
@@ -375,6 +376,16 @@ if __name__ == "__main__":
         weights_subset = {k: v for k, v in weights.items() if test_k(k)}
         hparams["model"].load_state_dict(weights_subset, strict=False)
 
+        # Freeze all layers
+        for p in hparams["model"].parameters():
+            p.requires_grad = False
+
+        # Add affine bridge
+        last_layer_index = layers[-1] - 1
+        last_layer = hparams["model"][1].encoder.layers[last_layer_index].norm2
+        replacement_layer = PostAffineAdapter(last_layer, size=hparams["d_model"])
+        hparams["model"][1].encoder.layers[last_layer_index].norm2 = replacement_layer
+
 
     data_sb.make_manifests(hparams)
     datasets = dataio_prepare(hparams)
@@ -387,6 +398,17 @@ if __name__ == "__main__":
         run_opts=run_opts,
         checkpointer=hparams["checkpointer"],
     )
+
+    if "partial_load" in hparams:
+        asr_brain.fit(
+            range(hparams["partial_load"]["bridge_epochs"]),
+            datasets["train_bridge"],
+            train_loader_kwargs=hparams["train_dataloader_opts"],
+        )
+        # RESET EVERYTHING FOR TRAINING
+        asr_brain.scheduler = asr_brain.hparams.scheduler(asr_brain.optimizer)
+        for p in hparams["model"].parameters():
+            p.requires_grad = True
 
     # Training
     asr_brain.fit(
