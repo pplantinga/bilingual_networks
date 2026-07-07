@@ -33,6 +33,23 @@ from speechbrain.utils.data_pipeline import takes, provides
 
 logger = get_logger(__name__)
 
+class PostAffineAdapter(torch.nn.Module):
+    """Adapter for stitching two networks together, built to bridge
+    the gap using an affine transformation."""
+    def __init__(self, replace_layer, size):
+        super().__init__()
+        self.post_affine = torch.nn.Linear(size, size)
+        self.replace_layer = replace_layer
+
+        # Start with layer frozen. Unfreeze after adaptation
+        for p in replace_layer:
+            p.requires_grad = False
+
+    def forward(self, x):
+        """Apply affine layer after selected layer"""
+        x = self.replace_layer(x)
+        return self.post_affine(x)
+
 
 # Define training procedure
 class ASR(sb.core.Brain):
@@ -345,6 +362,19 @@ if __name__ == "__main__":
     if "pretrainer" in hparams:
         hparams["pretrainer"].collect_files()
         hparams["pretrainer"].load_collected()
+
+    if "partial_load" in hparams:
+        layers = hparams["partial_load"]["layers"]
+        model_path = hparams["partial_load"]["model_path"]
+
+        # Load partial weights
+        weights = torch.load(model_path)
+        def test_k(k):
+            parts = k.split(".", maxsplit=4)
+            return (parts[0] == "0" and 0 in layers) or (parts[1:3] == ["encoder", "layers"] and int(parts[3]) + 1 in layers)
+        weights_subset = {k: v for k, v in weights.items() if test_k(k)}
+        hparams["model"].load_state_dict(weights_subset, strict=False)
+
 
     data_sb.make_manifests(hparams)
     datasets = dataio_prepare(hparams)
