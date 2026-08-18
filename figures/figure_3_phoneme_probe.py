@@ -198,7 +198,7 @@ if __name__ == "__main__":
     for (lo, hi, name), shade in zip(ZONE_BOUNDS, ZONE_SHADE):
         ax_a.axvspan(lo, hi, color=shade, zorder=-10)
         ax_a.text(
-            (lo + hi) / 2, 0.99, name,
+            (lo + hi) / 2, 0.98, name,
             transform=ax_a.get_xaxis_transform(),  # x in data coords, y in axes fraction
             fontsize=9, ha="center", va="top", color="#555555", style="italic",
         )
@@ -224,6 +224,19 @@ if __name__ == "__main__":
             m_a_val = bin_data.filter(pl.col("model_type") == "$M_a$")["norm_acc"].to_list()
             m_ctrl_val = bin_data.filter(pl.col("model_type") == "$M_{ctrl}$")["norm_acc"].to_list()
 
+            if b_name == "Pre-phonemic":
+                pair_name_short = pair_name.replace("French", "fr").replace("English", "en").replace("German", "de")
+                ax_b.text(
+                    x=x_map[b_name] - dx - 0.1, 
+                    y=m_a_val[0],
+                    s=pair_name_short,
+                    ha="right",
+                    va="center",
+                    color="grey",
+                    fontsize=8,
+                )
+
+
             if m_a_val and m_ctrl_val:
                 x_center = x_map[b_name]
                 x_ctrl = x_center + dx
@@ -240,13 +253,13 @@ if __name__ == "__main__":
     # Annotate the weirdly high control points
     oval = mpatches.Ellipse(xy=(0.2, 0.275), width=0.15, height = 0.08, edgecolor="black", lw=1, zorder=3, fc='None')
     ax_b.add_patch(oval)
-    ax_b.annotate(text="$M_a$ & $M_{ctrl}$ adopted\nfrom the same\nlanguage family", xy=(0.21, 0.28), xytext=(0.5, 0.29),
-        color='black', va="top", arrowprops=dict(arrowstyle='-|>', color='black', lw=2), fontsize=9)
+    ax_b.annotate(text="$M_a$ and $M_{ctrl}$\nadopted from\nthe same\nlanguage family", xy=(0.21, 0.28), xytext=(0.5, 0.29),
+        color='black', va="top", arrowprops=dict(arrowstyle='-|>', color='black', lw=2), fontsize=8)
 
 
     ax_b.set_xticks(range(len(bin_order)))
     ax_b.set_xticklabels(bin_order, fontsize=9)
-    ax_b.set_xlim(-0.5, len(bin_order) - 0.5)
+    ax_b.set_xlim(-0.8, len(bin_order) - 0.5)
 
     legend_handles = [
         plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=C[EX_ADOPT], markersize=8, label="$M_a$"),

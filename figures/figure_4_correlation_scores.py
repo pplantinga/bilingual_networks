@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import matplotlib.ticker as mticker
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
+from scipy import stats
 
 STEPS_PER_EPOCH = 1680
 RANDOM_CHANCE_STEP = 4000
@@ -15,12 +15,6 @@ Ma = f"{Lpre}2{Lpost}"
 Mctrl = f"{Lctrl}2{Lpost}"
 Mpre = Lpre
 Mpost = Lpost
-
-# Model group definitions
-pre_models      = ['de25_take2', 'de25_take3', 'de25_take6']
-post_models     = ['fr25_take4', 'fr25_take6']
-adoptee_models  = ['de5_fr25_take2', 'de5_fr25_take6', 'de5_fr25_take8']
-control_models  = ['en5_fr25_take8', 'en5_fr25_take9', 'en5_fr25_take10']
 
 a_pre_label     = "RSA($M_a$, $M_{pre}$) Layers 1-4"
 a_post_label    = "RSA($M_a$, $M_{post}$) Layers 1-4"
@@ -112,15 +106,22 @@ if __name__ == "__main__":
         )
     )
     
+    # average within each seed over the plateau window
+    plateau_by_seed = (
+        df_traj
+        .filter(pl.col("steps").is_between(36_000, 42_000))
+        .group_by(["category", "seed_a"])
+        .agg(seed_mean=pl.col("score_norm").mean())
+    )
 
-    # Print 95% CI for final percentage value
-    print("Panel A — stats for 36-42k steps:")
-    for (cat,), grp in df_traj.filter(pl.col('steps').is_between(36_000, 42_000)).group_by('category'):
-        vals = grp['score_norm'].to_numpy()
-        mean, se = vals.mean(), vals.std(ddof=1) / np.sqrt(len(vals))
-        ci = 1.96 * se
-        print(f"  {cat}  n={len(vals)}  mean={mean:.3f}  95% CI=[{mean-ci:.3f}, {mean+ci:.3f}]")
-
+    print("Panel A — stats for 36-42k steps (one value per seed, t-distribution CI):")
+    for (cat,), grp in plateau_by_seed.group_by("category"):
+        vals = grp["seed_mean"].to_numpy()
+        n = len(vals)
+        popmean = 1 if vals.mean() > 0.5 else 0
+        result = stats.ttest_1samp(vals, popmean)
+        low, high = result.confidence_interval(0.95)
+        print(f"{cat}   n_seeds={len(vals)}   mean={vals.mean():.3f}   95% CI=[{low:.3f}, {high:.3f}]   p={result.pvalue:.4f}")
 
     # Load & reshape panel-B data
     df_b = (
@@ -167,7 +168,7 @@ if __name__ == "__main__":
 
     # Reference lines
     ax_a.axvline(RANDOM_CHANCE_STEP, color='#555', ls='-.', alpha=0.8)
-    ax_a.text(RANDOM_CHANCE_STEP + 100, 0.45, " $L_{pre}$ Accuracy\n = Chance",  color='#555', alpha=0.8, va='center', ha='left', fontsize=9)
+    ax_a.text(RANDOM_CHANCE_STEP + 100, 0.55, " $L_{pre}$ Accuracy\n = Chance",  color='#555', alpha=0.8, va='center', ha='left', fontsize=9)
     ax_a.axhline(1, color='#555', ls='--', alpha=0.8)
     ax_a.axhline(0, color='#555', ls=':',  alpha=0.8)
     ax_a.text(11_000, 1.01, topline_label,  color='#555', alpha=0.8, va='bottom', ha='left', fontsize=9)
@@ -176,9 +177,9 @@ if __name__ == "__main__":
     ax_a.set_ylabel('Relative RSA (pre-phonemic)', fontsize=11)
     ax_a.set_ylim(-0.13, 1.15)
     ax_a.set_xlim(0, 42_000)
-    ax_a.set_yticks([0, 0.5, 1.0])
+    ax_a.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
     ax_a.set_xticks([0, 10_000, 20_000, 30_000, 40_000])
-    ax_a.grid(True, alpha=0.2)
+    ax_a.grid(True, alpha=0.3)
     ax_a.legend(loc='center right', handlelength=2.0, fontsize=9)
     ax_a.xaxis.set_major_formatter(mticker.FuncFormatter(k_formatter))
 
@@ -198,7 +199,7 @@ if __name__ == "__main__":
     agg = df_plot.group_by("pre_steps").mean().sort("pre_steps")
     ax_b.plot(agg["pre_steps"], agg['s14'],  color=C['madop'], lw=2.0, label='Pre-phonemic layers (1–4)',
         marker='o', markeredgecolor="white", markersize=10)
-    ax_b.plot(agg["pre_steps"], agg['s512'], color='#555', lw=2.0, label='Other 8 encoder layers',
+    ax_b.plot(agg["pre_steps"], agg['s512'], color='#555', lw=2.0, label='Other 8 encoder layers (5-12)',
         ls='--', marker='o', markeredgecolor="white", markersize=10)
 
     ax_b.set_xlabel('Number of updates on $L_{pre}$ before switch', fontsize=11)
