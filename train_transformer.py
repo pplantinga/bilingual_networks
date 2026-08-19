@@ -180,7 +180,6 @@ class ASR(sb.core.Brain):
     def on_fit_batch_end(self, batch, outputs, loss, should_step):
         """At the end of the optimizer step, apply annealing."""
         if should_step:
-            #self.hparams.noam_annealing(self.optimizer)
             self.scheduler.step()
 
     def on_stage_start(self, stage, epoch):
@@ -211,8 +210,6 @@ class ASR(sb.core.Brain):
         if stage == sb.Stage.VALID:
             # report different epoch stages according current stage
             current_epoch = self.hparams.epoch_counter.current
-            #lr = self.hparams.noam_annealing.current_lr
-            #steps = self.hparams.noam_annealing.n_steps
 
             epoch_stats = {
                 "epoch": epoch,
@@ -224,11 +221,14 @@ class ASR(sb.core.Brain):
                 train_stats=self.train_stats,
                 valid_stats=stage_stats,
             )
-            #self.checkpointer.save_and_keep_only(
-            self.checkpointer.save_checkpoint(
-                meta={"ACC": stage_stats["ACC"], "epoch": epoch},
-            #    max_keys=["ACC"],
-            )
+            if hasattr(self.hparams, "save_all") and self.hparams.save_all:
+                self.checkpointer.save_checkpoint(
+                    meta={"ACC": stage_stats["ACC"], "epoch": epoch},
+                )
+            else:
+                self.checkpointer.save_and_keep_only(
+                    meta={"ACC": stage_stats["ACC"], "epoch": epoch},
+                )
 
         elif stage == sb.Stage.TEST:
             self.hparams.train_logger.log_stats(
@@ -340,37 +340,6 @@ def dataio_prepare(hparams):
             **hparams["dynamic_batch_sampler_valid"],
         )
 
-    # Create extra dataset / pipeline for training a bridge
-    if "partial_load" in hparams:
-        lang = hparams["partial_load"]["pretrain_lang"]
-        pretrain_tokenizer = SentencePiece(
-            model_dir=hparams[f"tokenizer_{lang}_folder"],
-            vocab_size=hparams["output_neurons"],
-            model_type=hparams["token_type"],
-            character_coverage=hparams["character_coverage"],
-            bos_id=hparams["bos_index"],
-            eos_id=hparams["eos_index"],
-            text_file=str(text_file),
-        )
-        datasets["train_bridge"] = sb.dataio.dataset.DynamicItemDataset.from_json(
-            hparams["partial_load"]["bridge_manifest"], dynamic_items=pipelines
-        )
-
-        @sb.utils.data_pipeline.takes("words")
-        @sb.utils.data_pipeline.provides(*token_keys)
-        def pretrain_token_pipeline(words):
-            tokens_list = pretrain_tokenizer.sp.encode_as_ids(words)
-            tokens_bos = torch.LongTensor([hparams["bos_index"]] + tokens_list)
-            yield tokens_bos
-            tokens_eos = torch.LongTensor(tokens_list + [hparams["eos_index"]])
-            yield tokens_eos
-            tokens = torch.LongTensor(tokens_list)
-            yield tokens
-
-        datasets["train_bridge"].add_dynamic_item(pretrain_token_pipeline)
-        datasets["train_bridge"].set_output_keys(["id", "signal"] + token_keys)
-
-
 
     return datasets
 
@@ -397,10 +366,10 @@ if __name__ == "__main__":
         model_path = hparams["partial_load"]["model_path"]
 
         # Load partial weights
-        weights = torch.load(model_path)
+        weights = torch.load(model_path, map_location="cpu")
         def test_k(k):
             parts = k.split(".", maxsplit=4)
-            return (parts[0] == "0" and 0 in layers) or (parts[1:3] == ["encoder", "layers"] and int(parts[3]) + 1 in layers)
+            return parts[1:3] == ["encoder", "layers"] and int(parts[3]) + 1 in layers
         weights_subset = {k: v for k, v in weights.items() if test_k(k)}
         hparams["model"].load_state_dict(weights_subset, strict=False)
 
@@ -408,11 +377,16 @@ if __name__ == "__main__":
         for p in hparams["model"].parameters():
             p.requires_grad = False
 
-        # Add affine bridge
-        last_layer_index = layers[-1] - 1
-        last_layer = hparams["model"][1].encoder.layers[last_layer_index].norm2
-        replacement_layer = PostAffineAdapter(last_layer, size=hparams["d_model"])
-        hparams["model"][1].encoder.layers[last_layer_index].norm2 = replacement_layer
+        # Unfreeze FFNs at the borders of the inserted region
+        # On the theory that an affine transform is enough to bridge the gap, or close enough anyway
+        for p in hparams["model"][1].encoder.layers[min(layers) - 1].norm1.parameters():
+            p.requires_grad = True
+        for p in hparams["model"][1].encoder.layers[min(layers) - 1].ffn_module1.parameters():
+            p.requires_grad = True
+        for p in hparams["model"][1].encoder.layers[max(layers) - 1].norm2.parameters():
+            p.requires_grad = True
+        for p in hparams["model"][1].encoder.layers[max(layers) - 1].ffn_module2.parameters():
+            p.requires_grad = True
 
 
     data_sb.make_manifests(hparams)
@@ -427,21 +401,6 @@ if __name__ == "__main__":
         checkpointer=hparams["checkpointer"],
     )
 
-    if "partial_load" in hparams:
-        orig_scheduler = asr_brain.hparams.scheduler
-        asr_brain.hparams.scheduler = transformers.get_constant_schedule
-
-        asr_brain.fit(
-            range(hparams["partial_load"]["bridge_epochs"]),
-            datasets["train_bridge"],
-            train_loader_kwargs=hparams["train_dataloader_opts"],
-        )
-        # RESET EVERYTHING FOR TRAINING
-        asr_brain.hparams.scheduler = orig_scheduler
-        for p in hparams["model"].parameters():
-            p.requires_grad = True
-
-    # Training
     asr_brain.fit(
         asr_brain.hparams.epoch_counter,
         datasets["train"],

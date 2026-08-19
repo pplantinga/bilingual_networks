@@ -18,16 +18,17 @@ tokenizer_en_folder: manifests/en_tokenizer
 tokenizer_de_folder: manifests/de_tokenizer
 
 # Data files
-#pretrained_path: !PLACEHOLDER
+pretrained_path: !PLACEHOLDER
+partial_load_path: !PLACEHOLDER
 data_folder: data
 train_fr_manifest: manifests/train_fr.json
-valid_fr_manifest: manifests/valid_fr.json
+valid_fr_manifest: manifests/test_fr_subset.json
 test_fr_manifest: manifests/test_fr.json
 train_en_manifest: manifests/train_en.json
-valid_en_manifest: manifests/valid_en.json
+valid_en_manifest: manifests/test_en_subset.json
 test_en_manifest: manifests/test_en.json
 train_de_manifest: manifests/train_de.json
-valid_de_manifest: manifests/valid_de.json
+valid_de_manifest: manifests/test_de_subset.json
 test_de_manifest: manifests/test_de.json
 fr_combined: manifests/words_fr.txt
 en_combined: manifests/words_en.txt
@@ -35,26 +36,27 @@ de_combined: manifests/words_de.txt
 train_language: "en"
 train_languages: [!ref <train_language>]  # Dataloader needs list for historical reasons
 test_portion: 0.02
-save_all: True
 
 #ckpt_interval_minutes: 15 # save checkpoint every N min
 
 ####################### Training Parameters ####################################
 number_of_epochs: 20
-optimizer_step_limit: 250000
+steps_per_epoch: 100
 batch_size: 32 # This works with a 32GB GPU ! (bs * nb_gpu * accum) > 128 !
-ctc_weight: 0.3
+ctc_weight: 0.0
 grad_accumulation_factor: 6
 loss_reduction: 'batchmean'
 sorting: random
-num_workers: 2
+num_workers: 4
+kept_checkpoints: 1
+reinit_decoder: False
+freeze_encoder: False
 #precision: fp16 # bf16, fp16 or fp32
 
 # stages related parameters
 lr_adam: 0.001
 weight_decay: 0.01
-warmup_steps: 12000
-augment_warmup: 8000
+warmup_steps: 100   # v. short warmup for the bridge
 
 # BPE parameters
 token_type: unigram  # ["unigram", "bpe", "char"]
@@ -69,7 +71,7 @@ n_mels: 80
 # Or turn it off (but training speed will decrease)
 dynamic_batching: True
 max_batch_length_train: 300
-max_batch_length_val: 100 # we reduce it as the beam is much wider (VRAM)
+max_batch_length_val: 200
 num_bucket: 200
 shuffle: True # if true re-creates batches at each epoch shuffling examples.
 batch_ordering: random
@@ -94,12 +96,14 @@ train_dataloader_opts:
     batch_size: !ref <batch_size>
     #shuffle: True
     num_workers: !ref <num_workers>
+    looped_nominal_epoch: !ref <steps_per_epoch> * <grad_accumulation_factor>
 
 valid_dataloader_opts:
     batch_size: 1
 
 test_dataloader_opts:
-    batch_size: 1
+    batch_size: 20
+    looped_nominal_epoch: 10
 
 
 ####################### Model Parameters ###########################
@@ -242,39 +246,8 @@ epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
 
 normalize: !new:speechbrain.processing.features.InputNormalization
     norm_type: global
-    update_until_epoch: 4
-
-############################## Augmentations ###################################
-
-# Time Drop
-time_drop: !new:speechbrain.augment.freq_domain.SpectrogramDrop
-    drop_length_low: 15
-    drop_length_high: 25
-    drop_count_low: 3
-    drop_count_high: 3
-    replace: "zeros"
-    dim: 1
-
-# Frequency Drop
-freq_drop: !new:speechbrain.augment.freq_domain.SpectrogramDrop
-    drop_length_low: 25
-    drop_length_high: 35
-    drop_count_low: 2
-    drop_count_high: 2
-    replace: "zeros"
-    dim: 2
-
-# Time warp
-time_warp: !new:speechbrain.augment.freq_domain.Warping
-
-fea_augment: !new:speechbrain.augment.augmenter.Augmenter
-    min_augmentations: 3
-    max_augmentations: 3
-    augment_prob: 1.0
-    augmentations: [
-        !ref <time_drop>,
-        !ref <freq_drop>,
-        !ref <time_warp>]
+    #update_until_epoch: 4
+    update_until_epoch: 0 # Already trained!
 
 compute_features: !new:speechbrain.lobes.features.Fbank
     sample_rate: !ref <sample_rate>
@@ -291,8 +264,17 @@ cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
 
 
 # Comment out if you don't want to load pretrained model
-#pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
-#  loadables:
-#    model: !ref <model>
-#  paths:
-#    model: !ref <pretrained_path>/model.ckpt
+pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
+  loadables:
+    model: !ref <model>
+    normalize: !ref <normalize>
+  paths:
+    model: !ref <pretrained_path>/model.ckpt
+    normalize: !ref <pretrained_path>/normalizer.ckpt
+
+# Partial load
+partial_layers: [1, 2, 3, 4]
+partial_load:
+    layers: !ref <partial_layers>
+    model_path: !ref <partial_load_path>/model.ckpt
+    pretrain_lang: fr

@@ -20,16 +20,27 @@ tokenizer_save_folder: manifests/en_tokenizer
 pretrained_path: !PLACEHOLDER
 data_folder: data
 train_fr_manifest: manifests/train_fr.json
-valid_fr_manifest: manifests/valid_fr.json
-test_fr_manifest: manifests/test_fr.json
+valid_fr_manifest: manifests/test_fr_subset.json
+test_fr_manifest: manifests/test_fr_subset.json
+train_de_manifest: manifests/train_de.json
+valid_de_manifest: manifests/test_de_subset.json
+test_de_manifest: manifests/test_de_subset.json
+train_en_manifest: manifests/train_en.json
+valid_en_manifest: manifests/test_en_subset.json
+test_en_manifest: manifests/test_en_subset.json
 fr_combined: manifests/words_fr.txt
-train_languages: ["fr"]
+de_combined: manifests/words_de.txt
+en_combined: manifests/words_en.txt
+train_language: fr
+train_languages: [!ref <train_language>]
 phone_files:
   fr: data/phonemes_fr.csv
+  de: data/phonemes_de.csv
+  en: data/phonemes_en.csv
 test_portion: 0.02
 
 ####################### Training Parameters ####################################
-number_of_epochs: 15
+number_of_epochs: 30
 batch_size: 32 # This works with a 32GB GPU ! (bs * nb_gpu * accum) > 128 !
 grad_accumulation_factor: 1
 loss_reduction: 'batchmean'
@@ -90,7 +101,7 @@ train_dataloader_opts:
     looped_nominal_epoch: 10
 
 valid_dataloader_opts:
-    batch_size: 8
+    batch_size: 32
 
 
 ####################### Model Parameters ###########################
@@ -159,7 +170,7 @@ seq_lin: !new:speechbrain.nnet.linear.Linear
     input_size: !ref <d_model>
     n_neurons: !ref <output_neurons>
 
-phone_outputs: 36
+phone_outputs: 51
 phoneme_probe: !new:phoneme_probe_transformer.PhonemeProbe
   phoneme_count: !ref <phone_outputs>
   cnn_size: !ref <cnn_out_size>

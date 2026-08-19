@@ -36,10 +36,6 @@ class PhonemeProbe(torch.nn.Module):
         self.t_probes = torch.nn.ModuleList()
         for _ in range(enc_layers):
             self.t_probes.append(torch.nn.Linear(enc_size, phoneme_count))
-        #self.cnn_probe = torch.nn.GRU(cnn_size, phoneme_count, batch_first=True)
-        #self.t_probes = torch.nn.ModuleList()
-        #for _ in range(enc_layers):
-        #    self.t_probes.append(torch.nn.GRU(enc_size, phoneme_count, batch_first=True))
 
     def forward(self, cnn_output, hidden_layers):
         """Apply probe to both cnn and hidden layers"""
@@ -74,7 +70,6 @@ class ProbeBrain(sb.core.Brain):
     def compute_objectives(self, predictions, batch, stage):
         """Computes the phoneme loss against all probes."""
 
-        #y, y_lens = batch.phone_sequence
         _, wav_lens = batch.signal
 
         loss = 0
@@ -106,10 +101,6 @@ class ProbeBrain(sb.core.Brain):
     def on_fit_start(self):
         super().on_fit_start()
         self.metrics_log = []
-    #    self.phoneme_metrics = [
-    #        self.hparams.PhonemeMetric().to(self.device)
-    #        for i in range(self.hparams.num_encoder_layers + 1)
-    #    ]
 
     def on_stage_end(self, stage, stage_loss, epoch):
         """Gets called at the end of a epoch."""
@@ -118,9 +109,6 @@ class ProbeBrain(sb.core.Brain):
             score = round(metric.compute().item(), 5)
             metric.reset()
             return score
-
-        #def compute_metric(metric):
-        #    return round(metric.summarize("WER"), 3)
 
         if stage == sb.Stage.VALID:
             row = {

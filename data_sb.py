@@ -162,40 +162,15 @@ def make_datasets(hparams):
 
     def grid2array(grid, field, crop_start, crop_len, encoder, postfix):
         """Convert a list from an alignment grid to an array suitable
-        for use as a target tensor. Each phoneme is guaranteed at least
-        one frame; the total length may slightly exceed crop_len if
-        short phonemes need expansion."""
-        chunks = []
-        cursor = 0
+        for use as a target tensor."""
+        array = np.zeros(crop_len, dtype=int)
         for name, start, stop in convert_to_tuples(grid.getList(field)[0]):
             start_idx = max(int(start * target_rate) - crop_start, 0)
-            stop_idx  = max(int(stop  * target_rate) - crop_start, start_idx + 1)
-
-            if stop_idx <= 0 or start_idx >= crop_len:
-                continue
-
-            encoded = encoder.encode_label_torch(name + postfix).item()
-            actual_start = max(start_idx, cursor)
-            actual_stop  = max(stop_idx, actual_start + 1)
-            chunks.append(np.full(actual_stop - actual_start, encoded, dtype=int))
-            cursor = actual_stop
-
-        return np.concatenate(chunks) if chunks else np.zeros(0, dtype=int)
-
-    #def grid2array(grid, field, crop_start, crop_len, encoder, postfix):
-    #    """Convert a list from an alignment grid to an array suitable
-    #    for use as a target tensor."""
-    #    array = np.zeros(crop_len, dtype=int)
-    #    for name, start, stop in convert_to_tuples(grid.getList(field)[0]):
-    #        start_idx = max(int(start * target_rate) - crop_start, 0)
-    #        stop_idx = min(int(stop * target_rate) - crop_start, crop_len)
-    #        if start_idx == stop_idx:
-    #            print(f"Start index: {start_idx} and Stop index: {stop_idx}")
-    #            print(f"So this phoneme: {name} is excluded")
-    #        if stop_idx > 0 and start_idx < crop_len:
-    #            encoded = encoder.encode_label_torch(name + postfix).item()
-    #            array[start_idx:stop_idx] = encoded
-    #    return array
+            stop_idx = min(int(stop * target_rate) - crop_start, crop_len)
+            if stop_idx > 0 and start_idx < crop_len:
+                encoded = encoder.encode_label_torch(name + postfix).item()
+                array[start_idx:stop_idx] = encoded
+        return array
 
     def extract_phone_sequence(grid, encoder):
         """Convert a grid to a list of phones"""
@@ -303,7 +278,6 @@ def make_datasets(hparams):
             # Long utterances cause OOM on validation, limit max length
             datasets[stage] = datasets[stage].filtered_sorted(
                 key_max_value={"duration": 10.0},
-                #key_test={"lang": lambda x: x == "en"},
                 sort_key="duration",
             )
 
@@ -319,6 +293,5 @@ def make_datasets(hparams):
             num_samples=len(datasets["train"]) // len(hparams["train_languages"]),
             replacement=False,
         )
-
 
     return datasets
