@@ -23,7 +23,6 @@ def k_formatter(x, pos, n=0):
     if n == 0:
         return str(int(x // 1000)) + "k"
 
-#COLORS = {"ma": "firebrick", "mpost": "goldenrod"}
 COLORS = {"ma": "#d31f11", "mpost": "#62d8c3"}
 
 if __name__ == "__main__":
@@ -46,12 +45,9 @@ if __name__ == "__main__":
     )
 
     # Plot lines
-    #sns.lineplot(attrition_df, x="Steps", y="Accuracy", hue="lang", palette=["steelblue", "firebrick"], errorbar="ci", lw=2, ax=ax_a)
     sns.lineplot(attrition_df, x="Steps", y="Accuracy", style="lang", color=COLORS["ma"],
         style_order=["FR", "DE"], dashes=[(), (4, 2)], errorbar="ci", lw=2, ax=ax_a)
     ax_a.axhline(25.4, color="grey", linestyle="dotted", alpha=0.8, label="Random decoder inputs")
-    #ax_a.annotate(f"{final_de_acc:.1f}%", xy=(last_step, final_de_acc), xytext=(3300, 5), color=COLORS["ma"], weight="bold",
-    #             arrowprops=dict(arrowstyle="-|>", color=COLORS["ma"], lw=2))
 
     # Chart stuff
     ax_a.set_xlabel("Number of updates on $L_{post}$ (after switch)", labelpad=1)
@@ -88,11 +84,6 @@ if __name__ == "__main__":
     sns.lineplot(matching_df, x="Steps", y="Accuracy", hue="lang", hue_order=['de2fr', 'fr'],
         palette=[COLORS['ma'], COLORS['mpost']], errorbar="ci", lw=2, ax=ax_b)
     ax_b.axvline(switch_update, color="grey", linestyle="dashed", alpha=0.8, label="Language switch")
-    #ax_b.annotate(f"{final_fr_acc:.1f}%", xy=(last_step, final_fr_acc), xytext=(36_000, 70), color="firebrick", weight="bold",
-    #             arrowprops=dict(arrowstyle="-|>", color="firebrick", lw=2))
-    #ax_b.annotate(f"{final_de2fr_acc:.1f}%", xy=(last_step, final_de2fr_acc), xytext=(31_000, 80), color="goldenrod", weight="bold",
-    #             arrowprops=dict(arrowstyle="-|>", color="goldenrod", lw=2))
-
     ax_b.set_xlabel("Number of updates since initialization")
 
     # Get all handles and filter to only Line2D objects + the axvline
