@@ -79,6 +79,7 @@ if __name__ == "__main__":
     LAYERS = sorted(panelA_df["layer"].unique().to_list())
 
     # Test for significant differences at each layer bin
+    # Test is conducted over model seeds (4-6)
     print(f"\nAcross Ma:{EX_ADOPT} and Mctrl:{EX_CTRL} models, one-sided Mann-Whitney U test")
     print(f"asking whether the model contains more Lpre:{EX_BIRTH} phonemic knowledge than the Mpost:{EX_NEW}")
     layerwise_mean = (
@@ -90,6 +91,7 @@ if __name__ == "__main__":
             panelA_df.filter(pl.col("layer_bin") == bin_name)
             .join(layerwise_mean, on="layer")
             .with_columns(norm_acc=pl.col("accuracy") - pl.col("layer_mean"))
+            .group_by(["model_seed", "model_lang"]).agg(pl.col("norm_acc").mean())
         )
         madop_vals = bin_df.filter(pl.col("model_lang") == EX_ADOPT)
         mctrl_vals = bin_df.filter(pl.col("model_lang") == EX_CTRL)
@@ -98,8 +100,8 @@ if __name__ == "__main__":
         w, pc = stats.mannwhitneyu(mctrl_vals["norm_acc"], mpost_vals["norm_acc"], alternative="greater")
 
         print("Bin:", bin_name)
-        print(f"Ma p-value: {pa:.4g}")
-        print(f"Mctrl p-value: {pc:.4g}")
+        print(f"Ma    p-value: {pa:.4g}, n: {len(madop_vals)}")
+        print(f"Mctrl p-value: {pc:.4g}, n: {len(mctrl_vals)}")
         print()
 
     # ── Panel B data: build norm_acc for adoptee & control, for each of the 3 pairs ──
@@ -158,8 +160,8 @@ if __name__ == "__main__":
     bar_df = pl.concat(bar_records)
     bin_order = [b[0] for b in LAYER_BINS]
 
-    # Print Wilcoxon signed-rank test results for part b
-    print("\nAcross language pairs, Wilcoxon signed-rank test results for each bin (Ma vs Mctrl)\n")
+    # Print one-sided Wilcoxon signed-rank test results for part b
+    print("\nAcross language pairs, one-sided Wilcoxon signed-rank test results for each bin (Ma vs Mctrl)\n")
     for bin_name in ["Pre-phonemic", "Phonemic", "Post-phonemic"]:
         bin_df = bar_df.filter(pl.col("layer_bin") == bin_name)
         ma_vals = bin_df.filter(pl.col("model_type") == "$M_a$")
@@ -168,6 +170,7 @@ if __name__ == "__main__":
 
         print("Bin:", bin_name)
         print("p-value:", p)
+        print("n:", len(ma_vals))
         print()
 
     #

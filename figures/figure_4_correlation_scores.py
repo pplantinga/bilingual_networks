@@ -174,7 +174,7 @@ if __name__ == "__main__":
     ax_a.text(11_000, 1.01, topline_label,  color='#555', alpha=0.8, va='bottom', ha='left', fontsize=9)
     ax_a.text(11_000, -0.03, baseline_label, color='#555', alpha=0.8, va='top', ha='left', fontsize=9)
     ax_a.set_xlabel('Number of updates on $L_{post}$ after switch', fontsize=11)
-    ax_a.set_ylabel('Relative RSA (pre-phonemic)', fontsize=11)
+    ax_a.set_ylabel('Relative RSA', fontsize=11)
     ax_a.set_ylim(-0.13, 1.15)
     ax_a.set_xlim(0, 42_000)
     ax_a.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
@@ -182,6 +182,7 @@ if __name__ == "__main__":
     ax_a.grid(True, alpha=0.3)
     ax_a.legend(loc='center right', handlelength=2.0, fontsize=9)
     ax_a.xaxis.set_major_formatter(mticker.FuncFormatter(k_formatter))
+    ax_a.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0))
 
     
     # Panel B: Neural traces vs. pre-training steps
@@ -213,6 +214,7 @@ if __name__ == "__main__":
     ax_b.grid(True, alpha=0.3)
     ax_b.legend(frameon=True, loc='upper left', handlelength=4.0, fontsize=9)
     ax_b.xaxis.set_major_formatter(mticker.FuncFormatter(k_point_one_formatter))
+    ax_b.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=0))
 
     # Panel labels
     for ax, label in zip([ax_a, ax_b], ['a', 'b']):

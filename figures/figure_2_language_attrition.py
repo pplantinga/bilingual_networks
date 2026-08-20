@@ -6,6 +6,10 @@ import polars as pl
 import seaborn as sns
 from matplotlib.lines import Line2D
 
+
+COLORS = {"ma": "#d31f11", "mpost": "#62d8c3"}
+RENAME = {"FR": "$M_a$ ($L_{post}$)", "DE": "$M_a$ ($L_{pre}$)"}
+
 def unpivot_and_split(df):
     df = df.unpivot(index="Steps", value_name="Accuracy")
     df = (
@@ -14,6 +18,9 @@ def unpivot_and_split(df):
         )
         .unnest("variable")
         .rename({"field_0": "lang", "field_1": "seed"})
+        .with_columns(
+            pl.col("lang").replace(RENAME)
+        )
     )
     return df
 
@@ -22,8 +29,6 @@ def k_formatter(x, pos, n=0):
         return 0
     if n == 0:
         return str(int(x // 1000)) + "k"
-
-COLORS = {"ma": "#d31f11", "mpost": "#62d8c3"}
 
 if __name__ == "__main__":
     # Reorient two csvs from wide- to long-form
@@ -45,21 +50,18 @@ if __name__ == "__main__":
     )
 
     # Plot lines
-    sns.lineplot(attrition_df, x="Steps", y="Accuracy", style="lang", color=COLORS["ma"],
-        style_order=["FR", "DE"], dashes=[(), (4, 2)], errorbar="ci", lw=2, ax=ax_a)
-    ax_a.axhline(25.4, color="grey", linestyle="dotted", alpha=0.8, label="Random decoder inputs")
+    palette = {v: COLORS["ma"] for v in RENAME.values()}
+    sns.lineplot(attrition_df, x="Steps", y="Accuracy", style="lang", hue="lang", palette=palette,
+        style_order=RENAME.values(), hue_order=RENAME.values(), dashes=[(), (4, 2)], errorbar="ci", lw=2, ax=ax_a)
+    ax_a.axhline(0.254, color="grey", linestyle="dotted", alpha=0.8, label="Random")
 
     # Chart stuff
     ax_a.set_xlabel("Number of updates on $L_{post}$ (after switch)", labelpad=1)
     ax_a.set_ylabel("Next-Token Accuracy")
-    labels = ["$M_a$ ($L_{post}$)", "$M_a$ ($L_{pre}$)", "Random"]
-    handles, _ = ax_a.get_legend_handles_labels()
-    line_handles = [h for h in handles if isinstance(h, Line2D)]
-    ax_a.legend(line_handles, labels, loc="upper right", title=None, handlelength=2.0)
+    ax_a.legend(title=None, handlelength=2.0)
     ax_a.set_xlim(left=0, right=4_000)
-    ax_a.set_ylim(top=100)
+    ax_a.set_ylim(top=1.0)
     ax_a.grid(True, alpha=0.3)
-    ax_a.yaxis.set_major_formatter(mticker.PercentFormatter(decimals=0))
     ax_a.xaxis.set_major_formatter(mticker.FuncFormatter(k_formatter))
     ax_a.set_xticks([0, 1_000, 2_000, 3_000, 4_000])
 
